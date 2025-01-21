@@ -43,7 +43,7 @@ public class HaxeModuleSettingsBaseImpl implements HaxeModuleSettingsBase {
   protected String nmmlPath = "";
   protected String openFLPath = "";
   protected int buildConfig = 0;
-
+  protected boolean useDebugAdapterProtocol = false;
 
   public HaxeModuleSettingsBaseImpl() {
   }
@@ -61,7 +61,8 @@ public class HaxeModuleSettingsBaseImpl implements HaxeModuleSettingsBase {
                                     String hxmlPath,
                                     String nmmlPath,
                                     String openFLPath,
-                                    int buildConfig) {
+                                    int buildConfig,
+                                    boolean useDebugAdapterProtocol) {
     this.mainClass = mainClass;
     this.outputFileName = outputFileName;
     this.outputFolder = outputFolder;
@@ -76,6 +77,7 @@ public class HaxeModuleSettingsBaseImpl implements HaxeModuleSettingsBase {
     this.nmmlPath = nmmlPath;
     this.openFLPath = openFLPath;
     this.buildConfig = buildConfig;
+    this.useDebugAdapterProtocol = useDebugAdapterProtocol;
   }
 
   public void setNmeTarget(NMETarget nmeTarget) {
@@ -215,6 +217,10 @@ public class HaxeModuleSettingsBaseImpl implements HaxeModuleSettingsBase {
     return HaxeConfiguration.translateBuildConfig(buildConfig) == HaxeConfiguration.CUSTOM;
   }
 
+  public boolean isUseDebugAdapterProtocol() {
+    return useDebugAdapterProtocol;
+  }
+
   public void setNmmlPath(String nmmlPath) {
     this.nmmlPath = nmmlPath;
     notifyUpdated();
@@ -222,6 +228,11 @@ public class HaxeModuleSettingsBaseImpl implements HaxeModuleSettingsBase {
 
   public void setBuildConfig(int buildConfig) {
     this.buildConfig = buildConfig;
+    notifyUpdated();
+  }
+
+  public void setUseDebugAdapterProtocol(boolean useDebugAdapterProtocol) {
+    this.useDebugAdapterProtocol = useDebugAdapterProtocol;
     notifyUpdated();
   }
 

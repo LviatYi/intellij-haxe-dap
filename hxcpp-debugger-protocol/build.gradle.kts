@@ -22,6 +22,11 @@ idea.module {
     sourceDirs.add(File("src/main/java"))
 }
 
+dependencies {
+    // 添加 Gson 依赖
+    implementation("com.google.code.gson:gson:2.10.1")
+}
+
 tasks {
     compileJava {
         dependsOn("generateDebuggerJavaSource")

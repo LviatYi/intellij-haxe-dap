@@ -69,6 +69,7 @@ public class HaxeConfigurationEditor {
   private TextFieldWithBrowseButton myMainClassFieldWithButton;
   private RawCommandLineEditor myAppArguments;
   private JComboBox myTargetComboBox;
+  private JCheckBox myUseDebugAdapterProtocolCheckBox;
   private JCheckBox myExcludeFromCompilationCheckBox;
   private JLabel myTargetLabel;
   private JLabel myMainClassLabel;
@@ -407,6 +408,7 @@ public class HaxeConfigurationEditor {
     result = result || !settings.getNmeFlags().equals(myNMEArguments.getText());
     result = result || !settings.getOpenFLFlags().equals(myOpenFLArgumentTextField.getText());
     result = result || (settings.isExcludeFromCompilation() ^ myExcludeFromCompilationCheckBox.isSelected());
+    result = result || (settings.isUseDebugAdapterProtocol() ^ myUseDebugAdapterProtocolCheckBox.isSelected());
     result = result || (settings.isKeepSynchronizedWithProjectFile() ^ mySyncWithProjectCheckBox.isSelected());
     result = result || !settings.getOutputFileName().equals(myOutputFileNameTextField.getText());
     result = result || !settings.getOutputFolder().equals(myFolderTextField.getText());
@@ -429,6 +431,7 @@ public class HaxeConfigurationEditor {
     selectedNmeTarget = settings.getNmeTarget();
     selectedOpenFLTarget = settings.getOpenFLTarget();
     myExcludeFromCompilationCheckBox.setSelected(settings.isExcludeFromCompilation());
+    myUseDebugAdapterProtocolCheckBox.setSelected(settings.isUseDebugAdapterProtocol());
     mySyncWithProjectCheckBox.setSelected(settings.isKeepSynchronizedWithProjectFile());
     myOutputFileNameTextField.setText(settings.getOutputFileName());
     myFolderTextField.setText(settings.getOutputFolder());
@@ -469,6 +472,7 @@ public class HaxeConfigurationEditor {
       settings.setHaxeTarget((HaxeTarget)myTargetComboBox.getSelectedItem());
     }
     settings.setExcludeFromCompilation(myExcludeFromCompilationCheckBox.isSelected());
+    settings.setUseDebugAdapterProtocol(myUseDebugAdapterProtocolCheckBox.isSelected());
     settings.setKeepSynchronizedWithProjectFile(mySyncWithProjectCheckBox.isSelected());
     settings.setOutputFileName(myOutputFileNameTextField.getText());
     settings.setOutputFolder(myFolderTextField.getText());

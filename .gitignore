@@ -4,9 +4,9 @@
 /idea/
 /build/
 */build/
-*/gen/
+**/gen/
 .iml
 .project
 local-build-overrides.xml
 intellij-haxe*.jar
-
+.intellijPlatform/*

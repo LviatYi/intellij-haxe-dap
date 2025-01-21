@@ -48,7 +48,9 @@ public class HaxeApplicationConfiguration extends HaxeApplicationConfigurationBa
   private boolean customFileToLaunch = false;
   private String customFileToLaunchPath = "";
   private String customExecutablePath = "";
+  private String customWorkingDirectory = "";
   private boolean customExecutable = false;
+  private boolean customUseWorkingDir = false;
   private int customDebugPort = 6972;
   private boolean customRemoteDebugging = false;
 
@@ -107,6 +109,15 @@ public class HaxeApplicationConfiguration extends HaxeApplicationConfigurationBa
     return customExecutable;
   }
 
+  public boolean isCustomUseWorkingDir() {
+    return customUseWorkingDir;
+  }
+
+  public void setCustomUseWorkingDir(boolean customUseWorkingDir) {
+    this.customUseWorkingDir = customUseWorkingDir;
+  }
+
+
   public void setCustomExecutable(boolean customExecutable) {
     this.customExecutable = customExecutable;
   }
@@ -123,8 +134,16 @@ public class HaxeApplicationConfiguration extends HaxeApplicationConfigurationBa
     return customExecutablePath;
   }
 
+  public String getCustomWorkingDirectory() {
+    return customWorkingDirectory;
+  }
+
   public void setCustomExecutablePath(String customExecutablePath) {
     this.customExecutablePath = customExecutablePath;
+  }
+
+  public void setCustomWorkingDirectory(String customWorkingDirectory) {
+    this.customWorkingDirectory = customWorkingDirectory;
   }
 
   public int getCustomDebugPort() {

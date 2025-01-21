@@ -191,6 +191,10 @@ public class JpsHaxeModuleSettingsImpl extends JpsElementBase<JpsHaxeModuleSetti
     return mySettingsBase.isUseUserPropertiesToBuild();
   }
 
+  public boolean isUseDebugAdapterProtocol() {
+    return mySettingsBase.isUseDebugAdapterProtocol();
+  }
+
   @Override
   public void setNmmlPath(String nmmlPath) {
     mySettingsBase.setNmmlPath(nmmlPath);
@@ -204,6 +208,10 @@ public class JpsHaxeModuleSettingsImpl extends JpsElementBase<JpsHaxeModuleSetti
   @Override
   public void setBuildConfig(int buildConfig) {
     mySettingsBase.setBuildConfig(buildConfig);
+  }
+
+  public void setUseDebugAdapterProtocol(boolean useDebugAdapterProtocol) {
+    this.mySettingsBase.setUseDebugAdapterProtocol(useDebugAdapterProtocol);
   }
 
   @NotNull

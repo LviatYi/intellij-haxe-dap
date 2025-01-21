@@ -21,7 +21,7 @@
 
 <idea-plugin>
   <id>com.intellij.plugins.haxe</id>
-  <name>Haxe Toolkit Support</name>
+  <name>Haxe Toolkit Support (DAP)</name>
 
   <vendor>Haxe Community (Original sources provided by JetBrains.)</vendor>
   <idea-version since-build="@plugin.installable.since@" until-build="@plugin.installable.until@"/>

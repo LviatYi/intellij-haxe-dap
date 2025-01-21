@@ -1,4 +1,12 @@
 # Changelog
+
+## Unreleased
+
+* None
+
+## 2.0.0-alpha
+* Changed: add support for HXCPP driven by Debug Adapter Protocol (DAP) for debugging.
+
 ## 1.5.13
 * Bugfix: Fixed issue where Auto-reload project on changes could end up in an infinite loop. (#1197)
 

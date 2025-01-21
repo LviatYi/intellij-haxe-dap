@@ -47,11 +47,14 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
   private TextFieldWithBrowseButton myPathToFileTextField;
   private JCheckBox myAlternativeExecutable;
   private TextFieldWithBrowseButton myExecutableField;
+  private JCheckBox myWorkingDirectoryCheckBox;
+  private TextFieldWithBrowseButton myWorkingDirectoryField;
   private JTextField myDebugListenPort;
   private JCheckBox myRemoteDebuggingCheckBox;
 
   private String customPathToFile = "";
   private String customPathToExecutable = "";
+  private String customWorkDirectory = "";
   private int customDebugListenPort;
   private boolean customRemoteDebugging;
 
@@ -124,6 +127,28 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
       }
     });
 
+    myWorkingDirectoryCheckBox.addActionListener(new ActionListener() {
+      @Override
+      public void actionPerformed(ActionEvent e) {
+        if (!myWorkingDirectoryCheckBox.isSelected()) {
+          customWorkDirectory = myWorkingDirectoryField.getText();
+        }
+        updateComponents();
+      }
+    });
+
+    myWorkingDirectoryField.addActionListener(new ActionListener() {
+      @Override
+      public void actionPerformed(ActionEvent e) {
+        final FileChooserDescriptor descriptor = new FileChooserDescriptor(false, true, false, true, false, false);
+        final VirtualFile file = FileChooser.chooseFile(descriptor, component, null, null);
+        if (file != null) {
+          customWorkDirectory = FileUtil.toSystemIndependentName(file.getPath());
+          updateComponents();
+        }
+      }
+    });
+
     myDebugListenPort.addActionListener(new ActionListener() {
       @Override
       public void actionPerformed(ActionEvent e) {
@@ -152,6 +177,7 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
 
     myCustomPathCheckBox.setSelected(configuration.isCustomFileToLaunch());
     myAlternativeExecutable.setSelected(configuration.isCustomExecutable());
+    myWorkingDirectoryCheckBox.setSelected(configuration.isCustomUseWorkingDir());
 
     String launchPath = configuration.getCustomFileToLaunchPath();
     launchPath = !launchPath.contains("://") ? FileUtil.toSystemDependentName(launchPath) : launchPath;
@@ -160,6 +186,10 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
     launchPath = configuration.getCustomExecutablePath();
     launchPath = !launchPath.contains("://") ? FileUtil.toSystemDependentName(launchPath) : launchPath;
     customPathToExecutable = launchPath;
+
+    launchPath = configuration.getCustomWorkingDirectory();
+    launchPath = !launchPath.contains("://") ? FileUtil.toSystemDependentName(launchPath) : launchPath;
+    customWorkDirectory = launchPath;
 
     customDebugListenPort = configuration.getCustomDebugPort();
     myDebugListenPort.setText("" + customDebugListenPort);
@@ -173,6 +203,7 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
   private void updateComponents() {
     updateCustomPathToFile();
     updateCustomPathToExecutable();
+    updateCustomWorkDirectory();
   }
 
   private void updateCustomPathToFile() {
@@ -197,11 +228,17 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
     myExecutableField.setEnabled(myAlternativeExecutable.isSelected());
   }
 
+  private void updateCustomWorkDirectory() {
+    myWorkingDirectoryField.setText(myWorkingDirectoryCheckBox.isSelected() ? FileUtil.toSystemDependentName(customWorkDirectory) : "");
+    myWorkingDirectoryField.setEnabled(myWorkingDirectoryCheckBox.isSelected());
+  }
+
   @Override
   protected void applyEditorTo(HaxeApplicationConfiguration configuration) throws ConfigurationException {
     configuration.setModule(getSelectedModule());
     configuration.setCustomFileToLaunch(myCustomPathCheckBox.isSelected());
     configuration.setCustomExecutable(myAlternativeExecutable.isSelected());
+    configuration.setCustomUseWorkingDir(myWorkingDirectoryCheckBox.isSelected());
     if (myCustomPathCheckBox.isSelected()) {
       String fileName = myPathToFileTextField.getText();
       fileName = !fileName.contains("://") ? FileUtil.toSystemIndependentName(fileName) : fileName;
@@ -211,6 +248,11 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
       String fileName = myExecutableField.getText();
       fileName = !fileName.contains("://") ? FileUtil.toSystemIndependentName(fileName) : fileName;
       configuration.setCustomExecutablePath(fileName);
+    }
+    if (myWorkingDirectoryCheckBox.isSelected()) {
+      String fileName = myWorkingDirectoryField.getText();
+      fileName = !fileName.contains("://") ? FileUtil.toSystemIndependentName(fileName) : fileName;
+      configuration.setCustomWorkingDirectory(fileName);
     }
     Integer port;
     try {

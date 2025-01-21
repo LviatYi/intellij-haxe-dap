@@ -38,6 +38,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Pair;
@@ -55,8 +56,8 @@ import com.intellij.plugins.haxe.config.NMETarget;
 import com.intellij.plugins.haxe.config.OpenFLTarget;
 import com.intellij.plugins.haxe.haxelib.HaxelibClasspathUtils;
 import com.intellij.plugins.haxe.ide.module.HaxeModuleSettings;
+import com.intellij.plugins.haxe.runner.DirectRunningState;
 import com.intellij.plugins.haxe.runner.HaxeApplicationConfiguration;
-import com.intellij.plugins.haxe.runner.NMERunningState;
 import com.intellij.plugins.haxe.runner.OpenFLRunningState;
 import com.intellij.plugins.haxe.util.HaxeFileUtil;
 import com.intellij.plugins.haxe.util.HaxeResolveUtil;
@@ -70,14 +71,13 @@ import com.intellij.util.concurrency.QueueProcessor;
 import com.intellij.util.io.URLUtil;
 import com.intellij.util.ui.MessageCategory;
 import com.intellij.xdebugger.*;
-import com.intellij.xdebugger.breakpoints.XBreakpointHandler;
-import com.intellij.xdebugger.breakpoints.XBreakpointProperties;
-import com.intellij.xdebugger.breakpoints.XLineBreakpoint;
+import com.intellij.xdebugger.breakpoints.*;
 import com.intellij.xdebugger.evaluation.XDebuggerEditorsProvider;
 import com.intellij.xdebugger.evaluation.XDebuggerEvaluator;
 import com.intellij.xdebugger.frame.*;
 import com.intellij.xdebugger.impl.XSourcePositionImpl;
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl;
+import debugger.*;
 import haxe.root.JavaProtocol;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -189,9 +189,16 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     }
     else if (hxcppDebug) {
       final Project project = env.getProject();
-      return runHxcpp(project, module, settings, env, executor,
+      if (settings.isUseDebugAdapterProtocol()) {
+        return runDspHxcpp(env.getProject(), module, settings, env, executor,
+                           configuration.getCustomDebugPort(),
+                           configuration.isCustomRemoteDebugging());
+      }
+      else {
+        return runHxcpp(project, module, settings, env, executor,
                       configuration.getCustomDebugPort(),
                       configuration.isCustomRemoteDebugging());
+      }
     }
     else {
       throw new ExecutionException
@@ -254,7 +261,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                // Start the debugger process, which is a class that
                // implements the actual debugger functionality.  In this
                // case, it does so by message passing through a socket.
-               final DebugProcess debugProcess = new DebugProcess
+               final DapDebugProcess debugProcess = new DapDebugProcess
                  (session, project, module, port);
 
                // If using remote debugging, emit a console message
@@ -277,18 +284,23 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                          // runInTest if android or ios
                          ((settings.getOpenFLTarget() == OpenFLTarget.ANDROID) ||
                           (settings.getOpenFLTarget() == OpenFLTarget.IOS)),
-                         true, port).
-                       execute(executor, HaxeDebugRunner.this));
+                         true, port).execute(executor, HaxeDebugRunner.this));
                  }
                  else {
-                   debugProcess.setExecutionResult
-                     (new NMERunningState
+                   //debugProcess.setExecutionResult
+                   //  (new NMERunningState
+                   //     (env, module,
+                   //      // runInTest if android or ios
+                   //      ((settings.getNmeTarget() == NMETarget.ANDROID) ||
+                   //       (settings.getNmeTarget() == NMETarget.IOS)),
+                   //      true, port).
+                   //     execute(executor, HaxeDebugRunner.this));
+                   debugProcess.setExecutionResult(new DirectRunningState
                         (env, module,
                          // runInTest if android or ios
                          ((settings.getNmeTarget() == NMETarget.ANDROID) ||
                           (settings.getNmeTarget() == NMETarget.IOS)),
-                         true, port).
-                       execute(executor, HaxeDebugRunner.this));
+                         true, port).execute(executor, HaxeDebugRunner.this));
                  }
                }
 
@@ -307,6 +319,43 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     return debugSession.getRunContentDescriptor();
   }
 
+  private RunContentDescriptor runDspHxcpp(final Project project,
+                                           final Module module,
+                                           final HaxeModuleSettings settings,
+                                           final ExecutionEnvironment env,
+                                           final Executor executor,
+                                           final int port,
+                                           final boolean remoteDebugging) throws ExecutionException {
+    final XDebugSession debugSession = XDebuggerManager.getInstance(project).startSession(env, new XDebugProcessStarter() {
+      @NotNull
+      public XDebugProcess start(@NotNull final XDebugSession session) throws ExecutionException {
+        try {
+          final DapDebugProcess debugProcess = new DapDebugProcess(session, project, module, port);
+          if (remoteDebugging) {
+            showInfoMessage(project, "Listening for debugged process " +
+                                     "on port " +
+                                     port +
+                                     " ... Press OK after " +
+                                     "remote debugged process has started.", "Haxe Debugger");
+          }
+          else {
+            debugProcess.setExecutionResult(
+              new DirectRunningState(env, module, settings.getNmeTarget() == NMETarget.ANDROID || settings.getNmeTarget() == NMETarget.IOS,
+                                     true, port).execute(executor, HaxeDebugRunner.this));
+          }
+
+          debugProcess.start();
+          return debugProcess;
+        }
+        catch (IOException e) {
+          throw new ExecutionException(e.getMessage(), e);
+        }
+      }
+    });
+
+    return debugSession.getRunContentDescriptor();
+  }
+
   private class DebugProcess extends XDebugProcess {
     public DebugProcess(@NotNull XDebugSession session,
                         Project project, Module module,
@@ -315,13 +364,11 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
       mClassesWithStatics = new Vector<String>();
       mProject = project;
       mModule = module;
-      mDeferredQueue =
-        new LinkedList<Pair<debugger.Command, MessageListener>>();
+      mDeferredQueue = new LinkedList<Pair<debugger.Command, MessageListener>>();
       mListenerQueue = new LinkedList<MessageListener>();
       mServerSocket = new java.net.ServerSocket(port);
       mBreakpointHandlers = this.createBreakpointHandlers();
-      mMap =
-        new HashMap<XLineBreakpoint<XBreakpointProperties>, Integer>();
+      mMap = new HashMap<XLineBreakpoint<XBreakpointProperties>, Integer>();
 
       mWriteQueue = QueueProcessor.createRunnableQueueProcessor(QueueProcessor.ThreadToUse.POOLED);
     }
@@ -341,8 +388,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               SwingUtilities.invokeLater
                 (new Runnable() {
                   public void run() {
-                    DebugProcess.this.error
-                      ("Debugging loop failed: " + t);
+                    DebugProcess.this.error("Debugging loop failed: " + t);
                   }
                 });
             }
@@ -517,7 +563,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     private void readLoop() throws IOException {
       java.net.ServerSocket serverSocket;
       synchronized (this) {
-         serverSocket = mServerSocket;
+        serverSocket = mServerSocket;
       }
       // Don't synchronize around the accept.  It locks up the rest of the debugger still
       // running on the AWT thread if the application isn't starting correctly.
@@ -526,11 +572,11 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         mDebugSocket = debugSocket;
         mServerSocket.close();
         mServerSocket = null;
-        JavaProtocol.readClientIdentification
-          (mDebugSocket.getInputStream());
-        // XXX: Put this on the write thread/queue, instead of just posting it?
-        JavaProtocol.writeServerIdentification
-          (mDebugSocket.getOutputStream());
+        //JavaProtocol.readClientIdentification
+        //  (mDebugSocket.getInputStream());
+        //// XXX: Put this on the write thread/queue, instead of just posting it?
+        //JavaProtocol.writeServerIdentification
+        //  (mDebugSocket.getOutputStream());
         // Enqueue a classList callback to populate the class list
         this.enqueueCommand(debugger.Command.Classes(null),
                             new MessageListener() {
@@ -708,9 +754,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     private class SuspendContext extends XSuspendContext {
       public SuspendContext(Project project, Module module,
                             debugger.Message threadsWhereMessages) {
-        mExecutionStacks = this.buildWhereList
-          (project, module, (debugger.ThreadWhereList)
-            threadsWhereMessages.params[0]).
+        mExecutionStacks = this.buildWhereList(project, module, (debugger.ThreadWhereList)threadsWhereMessages.params[0]).
           toArray(new XExecutionStack[0]);
       }
 
@@ -819,13 +863,13 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           }
 
           final String fileNameToLookFor = fileName;
-          final java.util.Collection<VirtualFile> files =
+          final Collection<VirtualFile> files =
             ApplicationManager.getApplication().runReadAction(
-              new Computable<java.util.Collection<VirtualFile>>() {
+              new Computable<Collection<VirtualFile>>() {
                 @Override
-                public java.util.Collection<VirtualFile> compute() {
+                public Collection<VirtualFile> compute() {
 
-                  java.util.Collection<VirtualFile> files =
+                  Collection<VirtualFile> files =
                     FilenameIndex.getVirtualFilesByName(
                       project, fileNameToLookFor, GlobalSearchScope.moduleScope(module));
                   if (files.isEmpty()) {
@@ -845,7 +889,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               }
             );
 
-          java.util.Collection<VirtualFile> matches = new HashSet<VirtualFile>();
+          Collection<VirtualFile> matches = new HashSet<VirtualFile>();
           if (!files.isEmpty()) {
             for (VirtualFile f : files) {
               if (f.getPath().endsWith(mFileName)) {
@@ -1337,6 +1381,602 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     private HashMap<XLineBreakpoint<XBreakpointProperties>, Integer> mMap;
   }
 
+  private class DapDebugProcess extends XDebugProcess {
+    private static final String NON_EXIST_VALUE = "NONEXISTENT_VALUE";
+
+    public DapDebugProcess(@NotNull XDebugSession session, Project project, Module module, int port) throws IOException {
+      super(session);
+      this.project = project;
+      this.module = module;
+      deferredQueue = new LinkedList<>();
+      serverSocket = new java.net.ServerSocket(port);
+      breakpointHandlers = this.createBreakpointHandlers();
+      callbacks = new HashMap<Integer, DapHaxeProtocol.CommandCallback>();
+      writeQueue = QueueProcessor.createRunnableQueueProcessor(QueueProcessor.ThreadToUse.POOLED);
+    }
+
+    public void setExecutionResult(ExecutionResult executionResult) {
+      mExecutionResult = executionResult;
+    }
+
+    public void start() {
+      waitForPaused = true;
+      ApplicationManager.getApplication().executeOnPooledThread(new Runnable() {
+        public void run() {
+          try {
+            DapDebugProcess.this.readLoop();
+          }
+          catch (final Throwable t) {
+            SwingUtilities.invokeLater(new Runnable() {
+              public void run() {
+                DapDebugProcess.this.error("Debugging loop failed: " + t);
+              }
+            });
+          }
+        }
+      });
+    }
+
+    @Override
+    protected ProcessHandler doGetProcessHandler() {
+      return ((mExecutionResult == null) ? null : mExecutionResult.getProcessHandler());
+    }
+
+    @Override
+    @NotNull
+    public ExecutionConsole createConsole() {
+      return ((mExecutionResult == null) ? super.createConsole() : mExecutionResult.getExecutionConsole());
+    }
+
+    @Override
+    @NotNull
+    public XBreakpointHandler<?>[] getBreakpointHandlers() {
+      return breakpointHandlers;
+    }
+
+    @Override
+    @NotNull
+    public XDebuggerEditorsProvider getEditorsProvider() {
+      return new HaxeDebuggerEditorsProvider();
+    }
+
+    @Override
+    public void startPausing() {
+      this.expectOK(new DapHaxeCommand(DebugProtocolTypes.Pause));
+    }
+
+    @Override
+    public void resume(@Nullable XSuspendContext context) {
+      this.expectOK(new DapHaxeCommand<ThreadInfo>(DebugProtocolTypes.Continue, new ThreadInfo(0)));
+    }
+
+    @Override
+    public void startStepOver(@Nullable XSuspendContext context) {
+      this.expectOK(new DapHaxeCommand(DebugProtocolTypes.Next));
+    }
+
+    @Override
+    public void startStepInto(@Nullable XSuspendContext context) {
+      this.expectOK(new DapHaxeCommand(DebugProtocolTypes.StepIn));
+    }
+
+    @Override
+    public void startStepOut(@Nullable XSuspendContext context) {
+      this.expectOK(new DapHaxeCommand(DebugProtocolTypes.StepOut));
+    }
+
+    @Override
+    public void stop() {
+      synchronized (this) {
+        if (serverSocket != null) {
+          try {
+            serverSocket.close();
+            serverSocket = null;
+          }
+          catch (IOException ignored) {
+          }
+        }
+        if (debugSocket != null) {
+          try {
+            debugSocket.close();
+            debugSocket = null;
+          }
+          catch (IOException ignored) {
+          }
+        }
+      }
+    }
+
+    @Override
+    public void runToPosition(@NotNull XSourcePosition position, @Nullable XSuspendContext context) {
+      var file = position.getFile();
+
+      this.runToCursorPosition = position;
+      updateBreakpointByFileUrl(file.getUrl());
+      resume(null);
+    }
+
+    private void info(String message) {
+      showInfoMessage(project, message, "Haxe Debugger");
+    }
+
+    private void warn(String message) {
+      showInfoMessage(project, message, "Haxe Debugger Warning");
+    }
+
+    private void error(String message) {
+      showInfoMessage(project, message, "Haxe Debugger Error");
+      this.stop();
+    }
+
+    private <PT> void expectOK(DapHaxeCommand<PT> command) {
+      this.enqueueCommand(command, message -> DapDebugProcess.this.info("Received message: " + message.toString()));
+    }
+
+    private <PT, RT> void expectResult(DapHaxeCommand<PT> command,
+                                       DapHaxeProtocol.CommandCallback<PT, RT> callback) {
+      this.expectResult(command, callback, null);
+    }
+
+    private <PT, RT> void expectResult(DapHaxeCommand<PT> command,
+                                       DapHaxeProtocol.CommandCallback<PT, RT> callback,
+                                       @Nullable DapHaxeProtocol.CommandCallback<PT, RT> errorCallback) {
+      this.<PT, RT>enqueueCommand(command, message -> {
+        if (message.result == null) {
+          if (errorCallback != null) {
+            errorCallback.onResponse(message);
+          }
+          else {
+            DapDebugProcess.this.error("Received message without result: " + message);
+          }
+        }
+        else {
+          callback.onResponse(message);
+        }
+      });
+    }
+
+    private <PT, RT> void enqueueCommand(final DapHaxeCommand<PT> command, DapHaxeProtocol.CommandCallback<PT, RT> callback) {
+      try {
+        synchronized (this) {
+          if (debugSocket == null) {
+            deferredQueue.add(Pair.create(command, callback));
+            return;
+          }
+          var commandId = this.nextRequestId++;
+          callbacks.put(commandId, callback);
+          final OutputStream os = debugSocket.getOutputStream();
+          writeQueue.add(() -> {
+            try {
+              DapHaxeProtocol.writeCommand(os, new DapHaxeMessage<PT, RT>(commandId, command.getTypeStr(), command.params));
+            }
+            catch (RuntimeException e) {
+              DapDebugProcess.this.error(
+                "Debugger protocol error: exception while writing " + "command " + command + ": " + e);
+            }
+          });
+        }
+      }
+      catch (IOException e) {
+        DapDebugProcess.this.error(
+          "Debugger error: exception queueing write " + "command " + command + ": " + e);
+      }
+    }
+
+    private void readLoop() throws IOException {
+      java.net.ServerSocket serverSocket;
+      synchronized (this) {
+        serverSocket = this.serverSocket;
+      }
+      // Don't synchronize around the accept.  It locks up the rest of the debugger still
+      // running on the AWT thread if the application isn't starting correctly.
+      java.net.Socket debugSocket = serverSocket.accept();
+      synchronized (this) {
+        this.debugSocket = debugSocket;
+        this.serverSocket.close();
+        this.serverSocket = null;
+      }
+      while (true) {
+        synchronized (this) {
+          debugSocket = this.debugSocket;
+        }
+        if (debugSocket == null) {
+          break;
+        }
+
+        var message = DapHaxeProtocol.readMessage(debugSocket.getInputStream());
+        if (message != null) {
+          var dpt = DebugProtocolTypes.fromString(message.method);
+          switch (dpt) {
+            case BreakpointStop -> {
+              this.info("Breakpoint stop");
+              this.checkRunToAndTraceStack();
+            }
+            case ExceptionStop -> {
+              this.info("Exception stop");
+            }
+            case PauseStop -> {
+              if (waitForPaused) {
+                this.info("Pause stop for first time. Debug Server is wait for resume.");
+                waitForPaused = false;
+                while (!deferredQueue.isEmpty()) {
+                  var cmd = deferredQueue.removeFirst();
+                  this.enqueueCommand(cmd.getFirst(), cmd.getSecond());
+                }
+                this.resume(null);
+              }
+              else {
+                this.info("Pause stop for Breakpoint step.");
+                this.checkRunToAndTraceStack();
+              }
+            }
+            case ThreadExit, ThreadStart -> {
+              @SuppressWarnings("unchecked")
+              var m = (DapHaxeMessage<ThreadInfo, Object>)message;
+              if (m.params != null) {
+                var params = m.params;
+
+                var title = dpt == DebugProtocolTypes.ThreadExit ? "Thread exited. " : "Thread start. ";
+                this.info(title + "Thread: " + String.valueOf(params.threadId));
+              }
+            }
+            default -> {
+              this.info("message: " + message);
+            }
+          }
+          var callback = callbacks.remove(message.id);
+          if (callback != null) {
+            callback.onResponse(message);
+          }
+        }
+      }
+    }
+
+    private void checkRunToAndTraceStack() {
+      if (runToCursorPosition != null) {
+        this.updateBreakpointByFileUrl(runToCursorPosition.getFile().getUrl());
+        runToCursorPosition = null;
+      }
+
+      this.traceStack();
+    }
+
+    private void traceStack() {
+      this.<ThreadInfo, StackTraceInfo[]>expectResult(new DapHaxeCommand<>(DebugProtocolTypes.StackTrace),
+                                                      message -> {
+                                                        getSession().positionReached(
+                                                          new SuspendContext(DapDebugProcess.this.project,
+                                                                             DapDebugProcess.this.module,
+                                                                             message));
+                                                      });
+    }
+
+    private XBreakpointHandler<?>[] createBreakpointHandlers() {
+      return new XBreakpointHandler<?>[]{new XBreakpointHandler<XLineBreakpoint<XBreakpointProperties>>(HaxeBreakpointType.class) {
+        public void registerBreakpoint(@NotNull final XLineBreakpoint<XBreakpointProperties> breakpoint) {
+          DapDebugProcess.this.updateBreakpoint(breakpoint);
+        }
+
+        public void unregisterBreakpoint(@NotNull final XLineBreakpoint<XBreakpointProperties> breakpoint, final boolean temporary) {
+          DapDebugProcess.this.updateBreakpoint(breakpoint);
+        }
+      }};
+    }
+
+    private void updateBreakpoint(@NotNull final XLineBreakpoint<XBreakpointProperties> breakPoint) {
+      updateBreakpointByFileUrl(breakPoint.getFileUrl());
+    }
+
+    private void updateBreakpointByFileUrl(String focusFileUrl) {
+      String absFilePath;
+      var vfm = VirtualFileManager.getInstance();
+      VirtualFile file = vfm.findFileByUrl(focusFileUrl);
+      if (null == file || !file.exists() || null == (absFilePath = file.getCanonicalPath())) {
+        return;
+      }
+
+      XBreakpointManager breakpointManager = XDebuggerManager.getInstance(this.project).getBreakpointManager();
+      Collection<? extends XBreakpoint<?>> breakpoints = breakpointManager.getBreakpoints(HaxeBreakpointType.class);
+      List<BreakpointInfo> breakpointsInFile = new ArrayList<>();
+
+      for (XBreakpoint<?> breakpoint : breakpoints) {
+        if (breakpoint instanceof XLineBreakpoint<?>) {
+          XLineBreakpoint<?> lineBreakpoint = (XLineBreakpoint<?>)breakpoint;
+          if (!lineBreakpoint.getFileUrl().equals(focusFileUrl)) {
+            continue;
+          }
+          BreakpointInfo bp = new BreakpointInfo(lineBreakpoint.getLine() + 1);
+
+          if (lineBreakpoint.getConditionExpression() != null) {
+            bp.condition = lineBreakpoint.getConditionExpression().toString();
+          }
+          breakpointsInFile.add(bp);
+        }
+      }
+
+      if (this.runToCursorPosition != null) {
+        var runToCursorFile = this.runToCursorPosition.getFile();
+        var url = runToCursorFile.getUrl();
+        if (url.equals(focusFileUrl)) {
+          BreakpointInfo bp = new BreakpointInfo(this.runToCursorPosition.getLine() + 1);
+          breakpointsInFile.add(bp);
+        }
+      }
+
+      DapHaxeCommand<SetBreakpointsParam> cmd = new DapHaxeCommand(DebugProtocolTypes.SetBreakpoints, new SetBreakpointsParam(
+        absFilePath,
+        breakpointsInFile.toArray(new BreakpointInfo[0])
+      ));
+      this.expectOK(cmd);
+    }
+
+    private class SuspendContext extends XSuspendContext {
+      public SuspendContext(Project project, Module module, DapHaxeMessage<ThreadInfo, StackTraceInfo[]> message) {
+        var list = new Vector<XExecutionStack>();
+        list.addElement(new ExecutionStack(project, module, message.result));
+
+        executionStacks = list.toArray(new XExecutionStack[0]);
+      }
+
+      public XExecutionStack getActiveExecutionStack() {
+        return ((executionStacks.length > 0) ? executionStacks[0] : null);
+      }
+
+      @lombok.Getter private final XExecutionStack[] executionStacks;
+    }
+
+    private class ExecutionStack extends XExecutionStack {
+      public ExecutionStack(Project project, Module module, StackTraceInfo[] frameList) {
+        super("Thread with unknown id.");
+
+        stackFrames = new Vector<XStackFrame>();
+        for (StackTraceInfo frame : frameList) {
+          stackFrames.addElement(new StackFrame(project, module, frame));
+        }
+      }
+
+      public XStackFrame getTopFrame() {
+        return ((!stackFrames.isEmpty()) ? stackFrames.elementAt(0) : null);
+      }
+
+      public void computeStackFrames(int firstFrameIndex, XStackFrameContainer container) {
+        if (firstFrameIndex < stackFrames.size()) {
+          container.addStackFrames(stackFrames.subList(firstFrameIndex, stackFrames.size() - 1), true);
+        }
+      }
+
+      private Vector<XStackFrame> stackFrames;
+    }
+
+    private class StackFrame extends XStackFrame {
+      public StackFrame(final Project project, final Module module, StackTraceInfo frame) {
+        frameInfo = frame;
+
+        VirtualFileManager vfm = VirtualFileManager.getInstance();
+        VirtualFile file = vfm.findFileByUrl(VirtualFileManager.constructUrl(URLUtil.FILE_PROTOCOL, frameInfo.source));
+
+        if (null == file || !file.exists()) {
+          ModuleRootManager mrm = ModuleRootManager.getInstance(module);
+          for (var rootUrl : mrm.getSourceRootUrls()) {
+            var f = vfm.findFileByUrl(rootUrl + "/" + frameInfo.source);
+            if (f != null && f.exists()) {
+              file = f;
+              break;
+            }
+          }
+        }
+
+        if (null == file || !file.exists()) {
+          String fileName = VfsUtil.extractFileName(frameInfo.source);
+          if (fileName == null) {
+            fileName = frameInfo.source;
+          }
+
+          final String fileNameToLookFor = fileName;
+          final Collection<VirtualFile> files =
+            ApplicationManager.getApplication().runReadAction((Computable<Collection<VirtualFile>>)() -> {
+              var files1 =
+                FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.moduleScope(module));
+              if (files1.isEmpty()) {
+                files1 =
+                  FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.moduleWithDependenciesScope(module));
+              }
+              if (files1.isEmpty()) {
+                files1 =
+                  FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.moduleWithLibrariesScope(module));
+              }
+              if (files1.isEmpty()) {
+                files1 = FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.allScope(project));
+              }
+              return files1;
+            });
+
+          Collection<VirtualFile> matches = new HashSet<VirtualFile>();
+          if (!files.isEmpty()) {
+            for (VirtualFile f : files) {
+              if (f.getPath().endsWith(frameInfo.source)) {
+                matches.add(f);
+              }
+            }
+          }
+          if (matches.isEmpty()) {
+            file = HaxelibClasspathUtils.findFileOnClasspath(module, frameInfo.source);
+          }
+          else if (matches.size() == 1) {
+            VirtualFile possible = matches.iterator().next();
+            file = possible.isValid() ? possible : HaxelibClasspathUtils.findFileOnClasspath(module, possible.toString());
+          }
+          else {
+            file = HaxelibClasspathUtils.findFirstFileOnClasspath(module, matches);
+          }
+        }
+
+        if (null != file) {
+          file = HaxeFileUtil.getCanonicalFile(file);
+        }
+
+        sourcePosition = XSourcePositionImpl.create(file, frameInfo.line - 1);
+      }
+
+      public Object getEqualityObject() {
+        return (frameInfo.source + frameInfo.name).intern();
+      }
+
+      public XDebuggerEvaluator getEvaluator() {
+        return new XDebuggerEvaluator() {
+          public void evaluate(@NotNull String expression, @NotNull XEvaluationCallback callback, XSourcePosition expressionPosition) {
+            if (expression.trim().isEmpty()) {
+              callback.errorOccurred("Expression cannot be empty.");
+              return;
+            }
+
+            DapDebugProcess.this.<EvaluateParam, ValInfo>expectResult(
+              new DapHaxeCommand<>(DebugProtocolTypes.Evaluate, new EvaluateParam(expression, frameInfo.id)),
+              message -> {
+                if (message != null && message.result != null) {
+                  callback.evaluated(new Value(message.result));
+                }
+                else {
+                  callback.errorOccurred("Failed to evaluate expression: " + expression);
+                }
+              });
+          }
+        };
+      }
+
+      public XSourcePosition getSourcePosition() {
+        return sourcePosition;
+      }
+
+      @Override
+      public void computeChildren(@NotNull final XCompositeNode node) {
+        DapDebugProcess.this.<GetScopeParam, ScopeInfo[]>expectResult(
+          new DapHaxeCommand<>(DebugProtocolTypes.GetScopes, new GetScopeParam(this.frameInfo.id)),
+          message -> {
+            for (var scope : message.result) {
+              this.computeChildrenCurrentFrame(node, scope.id);
+            }
+          });
+      }
+
+      private void computeChildrenCurrentFrame(@NotNull final XCompositeNode node, int variableRef) {
+        DapDebugProcess.this.<GetVariablesParam, ValInfo[]>expectResult(
+          new DapHaxeCommand<>(DebugProtocolTypes.GetVariables, new GetVariablesParam(variableRef)),
+          message -> {
+            XValueChildrenList childrenList = new XValueChildrenList();
+            for (ValInfo val : message.result) {
+              childrenList.add(val.name, new Value(val));
+            }
+
+            node.addChildren(childrenList, true);
+          });
+      }
+
+      private class Value extends XValue {
+        public Value(ValInfo val) {
+          valInfo = val;
+          expression = valInfo.name;
+          icon = AllIcons.Debugger.Value;
+          if (!valInfo.vRefIsZero()) {
+            children = new LinkedList<>();
+          }
+        }
+
+        public void computePresentation(@NotNull XValueNode node, @NotNull XValuePlace place) {
+          refreshPresentation(node);
+        }
+
+        private void refreshPresentation(@NotNull XValueNode node) {
+          node.setPresentation(icon, this.valInfo.type, this.valInfo.value, (children != null));
+        }
+
+        public String getEvaluationExpression() {
+          return expression;
+        }
+
+        @Override
+        public boolean canNavigateToSource() {
+          return false;
+        }
+
+        @Override
+        public boolean canNavigateToTypeSource() {
+          return false;
+        }
+
+        @Override
+        public void computeChildren(@NotNull final XCompositeNode node) {
+          if (children == null) {
+            return;
+          }
+
+          DapDebugProcess.this.<GetVariablesParam, ValInfo[]>expectResult(
+            new DapHaxeCommand<>(DebugProtocolTypes.GetVariables, new GetVariablesParam(this.valInfo.variablesReference)),
+            message -> {
+              for (ValInfo info : message.result) {
+                children.add(new Value(info));
+              }
+              XValueChildrenList childrenList = new XValueChildrenList(children.size());
+              for (Value child : children) {
+                childrenList.add(child.valInfo.name, child);
+              }
+
+              node.addChildren(childrenList, true);
+            }
+          );
+        }
+
+        @Override
+        public @Nullable XValueModifier getModifier() {
+          return new XValueModifier() {
+            @Override
+            public void setValue(@NotNull XExpression expression, @NotNull XModificationCallback callback) {
+              DapDebugProcess.this.<SetVariableParam, ValInfo>expectResult(
+                new DapHaxeCommand<>(DebugProtocolTypes.SetVariable,
+                                     new SetVariableParam(Value.this.valInfo.name, expression.getExpression())),
+                message -> {
+                  if (Objects.equals(message.result.value, NON_EXIST_VALUE)) {
+                    callback.errorOccurred("Failed to set value of " + valInfo.name + ". Value not exist.");
+                  }
+                  else {
+                    valInfo.value = message.result.value;
+                    //refreshPresentation(node);
+                    callback.valueModified();
+                  }
+                },
+                message -> {
+                  callback.errorOccurred("Failed to set value of " + valInfo.name);
+                });
+            }
+          };
+        }
+
+        private final ValInfo valInfo;
+        private String expression;
+        private javax.swing.Icon icon;
+        private LinkedList<Value> children;
+      }
+
+      private StackTraceInfo frameInfo;
+      private XSourcePosition sourcePosition;
+    }
+
+    private final Project project;
+    private final Module module;
+    private LinkedList<Pair<DapHaxeCommand, DapHaxeProtocol.CommandCallback>> deferredQueue;
+    private java.net.ServerSocket serverSocket;
+    private java.net.Socket debugSocket;
+    private ExecutionResult mExecutionResult;
+    private XBreakpointHandler[] breakpointHandlers;
+    private QueueProcessor<Runnable> writeQueue;
+
+    public int nextRequestId = 1;
+    private Map<Integer, DapHaxeProtocol.CommandCallback> callbacks = new HashMap<>();
+    private boolean waitForPaused = false;
+
+    @Nullable private XSourcePosition runToCursorPosition = null;
+  }
+
   private static String getRelativePath(Project project, VirtualFile file) {
     PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
     String packageName = HaxeResolveUtil.getPackageName(psiFile);
@@ -1353,22 +1993,23 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
   }
 
   private static void showInfoMessage(final Project project, final String message, final String title) {
-      ApplicationManager.getApplication().invokeLater(new Runnable() {
-          @Override
-          public void run() {
-            if (false /* TODO: Get display behavior from the plugin configuration. */) {
-              // Put up a modal dialog.  Folks don't like this much, so this should not be the default.
-              Messages.showInfoMessage(project, message, title);
-            } else {
-              // Show the error on the status bar.
-              StatusBarUtil.setStatusBarInfo(project, message);
-              // XXX: Should we log this, too??
-            }
-            // Add the output to the "Problems" pane.
-            ProblemsView.getInstance(project).addMessage(MessageCategory.INFORMATION, new String[]{message},
-                                                                 null, null, null,
-                                                                 null, UUID.randomUUID());
-          }
-      });
+    System.out.println(title + ": " + message);
+    ApplicationManager.getApplication().invokeLater(new Runnable() {
+      @Override
+      public void run() {
+        if (false /* TODO: Get display behavior from the plugin configuration. */) {
+          // Put up a modal dialog.  Folks don't like this much, so this should not be the default.
+          Messages.showInfoMessage(project, message, title);
+        }
+        else {
+          // Show the error on the status bar.
+          StatusBarUtil.setStatusBarInfo(project, message);
+          // XXX: Should we log this, too??
+        }
+        // Add the output to the "Problems" pane.
+        ProblemsView.getInstance(project)
+          .addMessage(MessageCategory.INFORMATION, new String[]{message}, null, null, null, null, UUID.randomUUID());
+      }
+    });
   }
 }

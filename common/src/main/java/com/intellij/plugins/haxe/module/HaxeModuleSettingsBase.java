@@ -87,9 +87,13 @@ public interface HaxeModuleSettingsBase {
 
   boolean isUseUserPropertiesToBuild();
 
+  boolean isUseDebugAdapterProtocol();
+
   void setNmmlPath(String nmmlPath);
 
   int getBuildConfig();
 
   void setBuildConfig(int buildConfig);
+
+  void setUseDebugAdapterProtocol(boolean useDebugAdapterProtocol);
 }

@@ -70,11 +70,12 @@ public class HaxeModuleSettings extends HaxeModuleSettingsBaseImpl
                             String outputFolder,
                             String flexSdkName,
                             int buildConfig,
+                            boolean useDebugAdapterProtocol,
                             String hxmlPath,
                             String nmmlPath,
                             String openFLPath) {
     super(mainClass, outputFileName, outputFolder, arguments, nmeFlags, excludeFromCompilation, keepSynchronizedWithProjectFile, haxeTarget, nmeTarget, openFLTarget, hxmlPath, nmmlPath,
-          openFLPath, buildConfig);
+          openFLPath, buildConfig, useDebugAdapterProtocol);
     this.flexSdkName = flexSdkName;
     notifyUpdated();
   }
