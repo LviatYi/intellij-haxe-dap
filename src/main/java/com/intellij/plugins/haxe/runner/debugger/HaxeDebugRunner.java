@@ -34,7 +34,9 @@ import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.PluginManagerCore;
+import com.intellij.lang.ASTNode;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
@@ -42,6 +44,7 @@ import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -56,13 +59,19 @@ import com.intellij.plugins.haxe.config.NMETarget;
 import com.intellij.plugins.haxe.config.OpenFLTarget;
 import com.intellij.plugins.haxe.haxelib.HaxelibClasspathUtils;
 import com.intellij.plugins.haxe.ide.module.HaxeModuleSettings;
+import com.intellij.plugins.haxe.lang.psi.HaxeIdentifier;
+import com.intellij.plugins.haxe.lang.psi.HaxeReferenceExpression;
+import com.intellij.plugins.haxe.lang.psi.impl.HaxeIdentifierImpl;
+import com.intellij.plugins.haxe.lang.psi.impl.HaxePsiTokenImpl;
+import com.intellij.plugins.haxe.lang.psi.impl.HaxeReferenceExpressionImpl;
 import com.intellij.plugins.haxe.runner.DirectRunningState;
 import com.intellij.plugins.haxe.runner.HaxeApplicationConfiguration;
 import com.intellij.plugins.haxe.runner.OpenFLRunningState;
 import com.intellij.plugins.haxe.util.HaxeFileUtil;
 import com.intellij.plugins.haxe.util.HaxeResolveUtil;
-import com.intellij.psi.PsiFile;
-import com.intellij.psi.PsiManager;
+import com.intellij.psi.*;
+import com.intellij.psi.impl.source.tree.CompositeElement;
+import com.intellij.psi.impl.source.tree.TreeElement;
 import com.intellij.psi.search.FilenameIndex;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.ui.ColoredTextContainer;
@@ -81,6 +90,7 @@ import debugger.*;
 import haxe.root.JavaProtocol;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.mozilla.javascript.ast.AstNode;
 
 import javax.swing.*;
 import java.io.IOException;
@@ -190,7 +200,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     else if (hxcppDebug) {
       final Project project = env.getProject();
       if (settings.isUseDebugAdapterProtocol()) {
-        return runDspHxcpp(env.getProject(), module, settings, env, executor,
+        return runDapHxcpp(env.getProject(), module, settings, env, executor,
                            configuration.getCustomDebugPort(),
                            configuration.isCustomRemoteDebugging());
       }
@@ -319,7 +329,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     return debugSession.getRunContentDescriptor();
   }
 
-  private RunContentDescriptor runDspHxcpp(final Project project,
+  private RunContentDescriptor runDapHxcpp(final Project project,
                                            final Module module,
                                            final HaxeModuleSettings settings,
                                            final ExecutionEnvironment env,
@@ -1840,6 +1850,49 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                   callback.errorOccurred("Failed to evaluate expression: " + expression);
                 }
               });
+          }
+
+          @Override
+          public @Nullable TextRange getExpressionRangeAtOffset(Project project,
+                                                                Document document,
+                                                                int offset,
+                                                                boolean sideEffectsAllowed) {
+            PsiFile psiFile = PsiDocumentManager.getInstance(project).getPsiFile(document);
+            if (psiFile == null) {
+              return null;
+            }
+
+            PsiElement endElement = psiFile.findElementAt(offset);
+            if (endElement == null || !(endElement instanceof HaxePsiTokenImpl)) {
+              return null;
+            }
+
+            PsiElement wrapper = endElement.getParent();
+            if (!(wrapper instanceof HaxeIdentifierImpl) ||
+                !((HaxeIdentifierImpl)wrapper).getTokenType().getDebugName().equals("IDENTIFIER")) {
+              return null;
+            }
+
+            PsiElement startElementWrapper = wrapper;
+            while (startElementWrapper.getPrevSibling() != null &&
+                   isIdentifierRelevantElement(startElementWrapper.getPrevSibling())) {
+              startElementWrapper = startElementWrapper.getPrevSibling();
+            }
+
+            return new TextRange(startElementWrapper.getTextOffset(), endElement.getTextOffset() + endElement.getTextLength());
+          }
+
+          private boolean isIdentifierRelevantElement(PsiElement element) {
+            if (element instanceof HaxePsiTokenImpl) {
+              String text = element.getText();
+              return text.equals(".");
+            }
+            else if (element instanceof HaxeReferenceExpression) {
+              String text = element.getText();
+              return text.matches("[a-zA-Z_][a-zA-Z0-9_]*");
+            }
+
+            return false;
           }
         };
       }
