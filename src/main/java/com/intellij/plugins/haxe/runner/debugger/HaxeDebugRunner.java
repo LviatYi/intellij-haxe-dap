@@ -1692,6 +1692,10 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
       for (XBreakpoint<?> breakpoint : breakpoints) {
         if (breakpoint instanceof XLineBreakpoint<?>) {
           XLineBreakpoint<?> lineBreakpoint = (XLineBreakpoint<?>)breakpoint;
+          if (!lineBreakpoint.isEnabled()) {
+            continue;
+          }
+          
           if (!lineBreakpoint.getFileUrl().equals(focusFileUrl)) {
             continue;
           }
