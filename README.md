@@ -1,6 +1,14 @@
 Haxe plugin for Intellij IDEA and Android Studio
 ======================================
 
+Forked from [intellij-haxe | Github](http://github.com/HaxeFoundation/intellij-haxe).
+
+Implemented a debugger based on the DAP protocol to connect to the hxcpp debugging server.
+
+By LviatYi.
+
+---
+
 This plugin allows you to develop multi-platform programs using the [Haxe](http://haxe.org/) language with [Intellij IDEA](http://www.jetbrains.com/idea), [Android Studio](https://developer.android.com/studio/) and other IntelliJ IDEA-based IDEs by JetBrains.
 It requires Intellij IDEA Ultimate or Community Edition 2023 or later, or Android Studio Giraffe or later
 
