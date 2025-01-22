@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-* None
+* Changed: add support for tooltip when debugging.
+* Changed: add support for disable the breakpoints.
 
 ## 2.0.0-alpha
 * Changed: add support for HXCPP driven by Debug Adapter Protocol (DAP) for debugging.
