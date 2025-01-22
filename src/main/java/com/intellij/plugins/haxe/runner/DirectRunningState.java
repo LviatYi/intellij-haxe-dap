@@ -66,14 +66,10 @@ public class DirectRunningState extends CommandLineState {
   @NotNull
   @Override
   protected ProcessHandler startProcess() throws ExecutionException {
-    final HaxeModuleSettings settings = HaxeModuleSettings.getInstance(module);
-    final Sdk sdk = ModuleRootManager.getInstance(module).getSdk();
-    assert sdk != null;
-
     final HaxeApplicationConfiguration configuration =
       (HaxeApplicationConfiguration)(this.getEnvironment().getRunProfile());
 
-    HaxeCommandLine commandLine = getCommand(sdk, configuration);
+    HaxeCommandLine commandLine = getCommand(configuration);
 
     System.out.println("CD: " + commandLine.getWorkDirectory());
     System.out.println("Command: " + commandLine.getCommandLineString());
@@ -94,11 +90,7 @@ public class DirectRunningState extends CommandLineState {
     return processHandler;
   }
 
-  private HaxeCommandLine getCommand(Sdk sdk, HaxeApplicationConfiguration config) throws ExecutionException {
-    final HaxeSdkData sdkData = sdk.getSdkAdditionalData() instanceof HaxeSdkData ? (HaxeSdkData)sdk.getSdkAdditionalData() : null;
-    if (sdkData == null) {
-      throw new ExecutionException(HaxeCommonBundle.message("invalid.haxe.sdk"));
-    }
+  private HaxeCommandLine getCommand(HaxeApplicationConfiguration config) throws ExecutionException {
     final HaxeCommandLine commandLine = new HaxeCommandLine(module);
 
     //VirtualFile workDir = ProjectUtil.guessModuleDir(module);
