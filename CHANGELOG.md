@@ -4,6 +4,7 @@
 
 * Changed: add support for tooltip when debugging.
 * Changed: add support for disable the breakpoints.
+* Changed: add status bar message for Exception from Debugger Server.
 
 ## 2.0.0-alpha
 * Changed: add support for HXCPP driven by Debug Adapter Protocol (DAP) for debugging.

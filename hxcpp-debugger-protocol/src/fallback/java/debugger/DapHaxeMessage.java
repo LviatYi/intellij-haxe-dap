@@ -67,6 +67,9 @@ public class DapHaxeMessage<PT, RT> {
       case Evaluate:
         m.result = gson.fromJson(pm.result, ValInfo.class);
         break;
+      case ExceptionStop:
+        m.params = gson.fromJson(pm.params, ExceptionInfo.class);
+        break;
       case Pause:
       case Continue:
       case StepIn:
@@ -80,7 +83,6 @@ public class DapHaxeMessage<PT, RT> {
       case Completions:
       case SetExceptionOptions:
       case BreakpointStop:
-      case ExceptionStop:
       case PauseStop:
       case Unknown:
         break;

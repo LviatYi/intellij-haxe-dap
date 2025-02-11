@@ -1599,11 +1599,26 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           var dpt = DebugProtocolTypes.fromString(message.method);
           switch (dpt) {
             case BreakpointStop -> {
-              this.info("Breakpoint stop");
+              this.info("Breakpoint stop.");
               this.checkRunToAndTraceStack();
             }
             case ExceptionStop -> {
-              this.info("Exception stop");
+              String msg = "";
+              try {
+                var exception = (DapHaxeMessage<ExceptionInfo, Object>)message;
+                if (exception.params != null) {
+                  msg = exception.params.text;
+                }
+              }
+              catch (Exception ignored) {
+              }
+
+              if (StringUtil.isEmpty(msg)) {
+                this.info("Exception stop." + msg);
+              }
+              else {
+                this.info("Exception stop. Error message:" + message);
+              }
             }
             case PauseStop -> {
               if (waitForPaused) {
