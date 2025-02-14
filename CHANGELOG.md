@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+* Changed: clear buffer when debugger stop.
+* Changed: request focus when hit breakpoint.
+
+## 2.0.1-alpha
+
 * Changed: add support for tooltip when debugging.
 * Changed: add support for disable the breakpoints.
 * Changed: add status bar message for Exception from Debugger Server.

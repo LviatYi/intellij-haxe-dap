@@ -40,6 +40,10 @@ public class DapHaxeProtocol extends haxe.lang.HxObject {
     buffer.put(data, 0, length);
   }
 
+  public static void clearBuffer() {
+    buffer.clear();
+  }
+
   private static void ensureCapacity(int additionalDataLength) {
     if (buffer.remaining() < additionalDataLength) {
       int newSize = (buffer.capacity() + additionalDataLength) * 2;

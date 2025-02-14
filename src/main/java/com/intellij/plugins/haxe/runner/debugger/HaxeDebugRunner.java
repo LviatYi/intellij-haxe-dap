@@ -1478,6 +1478,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     @Override
     public void stop() {
       synchronized (this) {
+        DapHaxeProtocol.clearBuffer();
         if (serverSocket != null) {
           try {
             serverSocket.close();
