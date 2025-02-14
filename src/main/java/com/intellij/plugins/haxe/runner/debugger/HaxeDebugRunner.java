@@ -49,6 +49,8 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
+import com.intellij.openapi.wm.IdeFrame;
+import com.intellij.openapi.wm.WindowManager;
 import com.intellij.openapi.wm.impl.status.StatusBarUtil;
 import com.intellij.plugins.haxe.HaxeBundle;
 import com.intellij.plugins.haxe.buildsystem.hxml.model.HXMLProjectModel;
@@ -1601,6 +1603,11 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           switch (dpt) {
             case BreakpointStop -> {
               this.info("Breakpoint stop.");
+              JFrame frame = WindowManager.getInstance().getFrame(project);
+              if (frame instanceof IdeFrame) {
+                frame.toFront();  // 让窗口前置（非最小化时）
+                frame.requestFocus(); // 请求焦点
+              }
               this.checkRunToAndTraceStack();
             }
             case ExceptionStop -> {
