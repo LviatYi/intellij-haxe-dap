@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+* Changed: Merge Intellij-Haxe 1.6.0 into this repo.
+
+## 2.0.2-beta
+
 * Changed: clear buffer when debugger stop.
 * Changed: request focus when hit breakpoint.
 
