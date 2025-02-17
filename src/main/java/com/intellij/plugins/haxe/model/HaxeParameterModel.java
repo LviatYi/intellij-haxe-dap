@@ -22,9 +22,12 @@ package com.intellij.plugins.haxe.model;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.plugins.haxe.lang.psi.*;
+import com.intellij.plugins.haxe.lang.psi.impl.HaxeTypeParameterDeclaration;
 import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluator;
 import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluatorContext;
+import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionUsageUtil;
 import com.intellij.plugins.haxe.model.type.*;
+import com.intellij.plugins.haxe.model.type.HaxeArgument;
 import com.intellij.plugins.haxe.util.UsefulPsiTreeUtil;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiMember;
@@ -75,8 +78,21 @@ public class HaxeParameterModel extends HaxeBaseMemberModel implements HaxeModel
     return this.hasOptionalPsi() || this.hasInit();
   }
 
+  public boolean isRestOrMacroVarArg() {
+    return isRest() || isMacroVarArg();
+  }
+
   public boolean isRest() {
     return basePsi instanceof  HaxeRestParameter;
+  }
+
+  public boolean isMacroVarArg() {
+    SpecificHaxeClassReference classType = getType().getClassType();
+    if(classType != null) {
+      return HaxeMacroTypeUtil.isMacroVarArgOrRestType(classType);
+    }else {
+      return false;
+    }
   }
 
   public boolean hasInit() {
@@ -88,8 +104,7 @@ public class HaxeParameterModel extends HaxeBaseMemberModel implements HaxeModel
   }
 
   public HaxeTypeTag getTypeTagPsi() {
-    return CachedValuesManager.getCachedValue(basePsi, () -> new CachedValueProvider.Result<>(getParameterPsi().getTypeTag(), basePsi));
-    //return getParameterPsi().getTypeTag();
+    return getParameterPsi().getTypeTag();
   }
 
   private ResultHolder typeReplacement;// allow us to replace ExprOf<T> with T
@@ -101,12 +116,12 @@ public class HaxeParameterModel extends HaxeBaseMemberModel implements HaxeModel
       return typeReplacement.duplicate();
     }
     ResultHolder type = null;
-    HaxeTypeTag psi = getTypeTagPsi();
-    if (psi != null) {
-      type = HaxeTypeResolver.getTypeFromTypeTag(psi, this.getContextElement());
+    HaxeTypeTag typeTagPsi = getTypeTagPsi();
+    if (typeTagPsi != null) {
+      type = HaxeTypeResolver.getTypeFromTypeTag(typeTagPsi, this.getContextElement());
       //caching when we know there's no generics involved
       if (!type.isTypeParameter() && type.getClassType() != null && type.getClassType().getSpecifics().length == 0) {
-        if (psi.textMatches(type.getType().toString())) { // make sure we are not caching a resolved value (ex. param:T being resolved to param:String)
+        if (typeTagPsi.textMatches(type.getType().toString())) { // make sure we are not caching a resolved value (ex. param:T being resolved to param:String)
           typeReplacement = type;
         }
       }
@@ -115,6 +130,11 @@ public class HaxeParameterModel extends HaxeBaseMemberModel implements HaxeModel
     }else {
       type = new ResultHolder(SpecificHaxeClassReference.getUnknown(this.basePsi));
     }
+    if(type.getType() instanceof SpecificEnumValueReference enumValueReference) {
+      // uses enumClass type instead of enumValue type when working with parameters
+      type = enumValueReference.getType();
+    }
+
     return type;
   }
 
@@ -123,9 +143,17 @@ public class HaxeParameterModel extends HaxeBaseMemberModel implements HaxeModel
     ResultHolder typeResult = getType();
     if (resolver != null) {
       SpecificTypeReference type = typeResult.getType();
+      if(type.isUnknown()) {
+        HaxeParameter parameterPsi = getParameterPsi();
+        HaxeComponentName componentName = parameterPsi.getComponentName();
+        ResultHolder fromUsage = HaxeExpressionUsageUtil.tryToFindTypeFromUsage(componentName, null, null, new HaxeExpressionEvaluatorContext(getParameterPsi()), resolver, null);
+        if(fromUsage != null && !fromUsage.isUnknown()) {
+          type = fromUsage.getType();
+        }
+      }
       if(type instanceof SpecificHaxeClassReference classReference) {
-        if (type.isTypeParameter()) {
-          ResultHolder resolve = resolver.resolve(classReference.getClassName());
+        if (classReference.getHaxeClass() instanceof HaxeTypeParameterDeclaration typeParameter) {
+          ResultHolder resolve = resolver.resolve(typeParameter);
           if (resolve != null && !resolve.isUnknown()) return resolve;
         }
         return propagateGenericsToType(classReference.createHolder(), resolver);
@@ -141,9 +169,10 @@ public class HaxeParameterModel extends HaxeBaseMemberModel implements HaxeModel
   private SpecificFunctionReference propagateGenericsToFunction(SpecificFunctionReference reference, HaxeGenericResolver resolver) {
     // copy so we dont break other logic
 
-    List<SpecificFunctionReference.Argument> arguments = reference.getArguments().stream().map(argument -> resolverArgument(argument, resolver)).toList();
+    List<HaxeArgument> arguments = reference.getArguments().stream().map(argument -> resolverArgument(argument, resolver)).toList();
     ResultHolder returnType = reference.getReturnType();
-    ResultHolder resolvedReturnType = resolver.resolveReturnType(returnType);
+    //ResultHolder resolvedReturnType = resolver.resolveReturnType(returnType);
+    ResultHolder resolvedReturnType = resolver.resolve(returnType);
     if (resolvedReturnType != null && !resolvedReturnType.isUnknown()) returnType = resolvedReturnType;
     if (reference.method != null) {
       return new SpecificFunctionReference(arguments, returnType, reference.method, reference.getElementContext());
@@ -152,7 +181,7 @@ public class HaxeParameterModel extends HaxeBaseMemberModel implements HaxeModel
     }
   }
 
-  private SpecificFunctionReference.Argument resolverArgument(SpecificFunctionReference.Argument argument, HaxeGenericResolver resolver) {
+  private HaxeArgument resolverArgument(HaxeArgument argument, HaxeGenericResolver resolver) {
     ResultHolder type = argument.getType();
     ResultHolder resolve = resolver.resolve(type);
     if (resolve != null && !resolve.isUnknown()) type = resolve;
@@ -269,5 +298,9 @@ public class HaxeParameterModel extends HaxeBaseMemberModel implements HaxeModel
     HaxeParameterModel model = new HaxeParameterModel(getParameterPsi());
     model.typeReplacement = type;
     return model;
+  }
+
+  public boolean isUntyped() {
+    return getTypeTagPsi() == null && !hasInit();
   }
 }

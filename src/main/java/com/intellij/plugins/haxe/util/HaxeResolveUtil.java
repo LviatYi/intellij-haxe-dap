@@ -23,7 +23,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.LogLevel;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
-import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.ProjectRootManager;
@@ -36,10 +35,7 @@ import com.intellij.plugins.haxe.HaxeComponentType;
 import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypeSets;
 import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypes;
 import com.intellij.plugins.haxe.lang.psi.*;
-import com.intellij.plugins.haxe.lang.psi.impl.AbstractHaxeTypeDefImpl;
-import com.intellij.plugins.haxe.lang.psi.impl.HaxeParenthesizedExpressionReferenceImpl;
-import com.intellij.plugins.haxe.lang.psi.impl.HaxePsiCompositeElementImpl;
-import com.intellij.plugins.haxe.lang.psi.impl.HaxeTypeParameterMultiType;
+import com.intellij.plugins.haxe.lang.psi.impl.*;
 import com.intellij.plugins.haxe.model.*;
 import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluator;
 import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluatorContext;
@@ -58,6 +54,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
+import static com.intellij.plugins.haxe.lang.psi.HaxeResolver.canBeQname;
 import static com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluator.evaluate;
 import static com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluator.findIteratorType;
 import static com.intellij.plugins.haxe.util.HaxeDebugLogUtil.traceAs;
@@ -180,7 +177,7 @@ public class HaxeResolveUtil {
     final FullyQualifiedInfo qualifiedInfo = new FullyQualifiedInfo(qName);
     List<HaxeModel> result = HaxeProjectModel.fromProject(psiManager.getProject()).resolve(qualifiedInfo, scope);
     if (result != null && !result.isEmpty()) {
-      HaxeModel item = result.get(0);
+      HaxeModel item = result.getFirst();
       if (item instanceof HaxeFileModel) {
         HaxeClassModel classModel = ((HaxeFileModel)item).getMainClassModel();
         return classModel != null ? classModel.haxeClass : null;
@@ -230,15 +227,15 @@ public class HaxeResolveUtil {
     if (model == null) {
       return Collections.emptyList();
     }
-    return model.getClassModels().stream().map(HaxeClassModel::getPsi).toList();
+    return model.getClassModels().parallelStream().map(HaxeClassModel::getPsi).toList();
   }
 
   @Nullable
   public static HaxeClass findComponentDeclaration(@Nullable PsiFile file, @NotNull String componentName) {
     final List<HaxeClass> declarations = findComponentDeclarations(file);
     for (HaxeClass haxeClass : declarations) {
-      final HaxeComponentName identifier = haxeClass.getComponentName();
-      if (identifier != null && identifier.textMatches(componentName)) {
+      final String name = haxeClass.getModel().getName();
+      if (componentName.equalsIgnoreCase(name)) {
         return haxeClass;
       }
     }
@@ -266,243 +263,6 @@ public class HaxeResolveUtil {
       final List<HaxeType> inheritTypes = inherit.getTypeList();
       result.addAll(inheritTypes);
     }
-    return result;
-  }
-
-  public static List<HaxeNamedComponent> filterNamedComponentsByType(List<HaxeNamedComponent> result, final HaxeComponentType type) {
-    return ContainerUtil.filter(result, new Condition<HaxeNamedComponent>() {
-      @Override
-      public boolean value(HaxeNamedComponent component) {
-        return HaxeComponentType.typeOf(component) == type;
-      }
-    });
-  }
-
-  @Nullable
-  public static HaxeNamedComponent findNamedSubComponent(@Nullable HaxeClass haxeClass, @NotNull final String name,
-                                                         @Nullable HaxeGenericResolver resolver) {
-    if (haxeClass == null) {
-      return null;
-    }
-    final HaxeNamedComponent result = haxeClass.findHaxeMethodByName(name, resolver);
-    return result != null ? result : haxeClass.findHaxeFieldByName(name, resolver);
-  }
-
-  /**
-   * Gets the list of named components from the given classes and their supertypes, with duplicate named components removed.
-   * If multiple components share the same name, *which* of those components
-   * will be returned is indeterminate.
-   *
-   * @param resolver - map of generic type names to their concrete types.
-   * @param rootHaxeClasses - which class(es) to gather components from.
-   * @return - a list of named components defined in the rootHaxeClasses and their supertypes.
-   */
-  @NotNull
-  public static List<HaxeNamedComponent> findNamedSubComponents(@Nullable HaxeGenericResolver resolver, @NotNull HaxeClass... rootHaxeClasses) {
-    return findNamedSubComponents(true, resolver, rootHaxeClasses);
-  }
-
-  private static void addNotNullComponents(@NotNull List<HaxeNamedComponent> collection, @Nullable List<HaxeNamedComponent> possibles) {
-    if (null == possibles) return;
-    for (HaxeNamedComponent component : possibles) {
-      if (component.getName() != null) {
-        collection.add(component);
-      }
-    }
-  }
-
-  /**
-   * Gets the named components from a class and all its supertypes.
-   *
-   * @param unique - whether multiple components sharing a name are included.  If true, *which* of the components
-   *               sharing a name is returned is indeterminate.
-   * @param parentResolver - map of generic type names to real types.
-   * @param rootHaxeClasses - which class(es) to gather components from.
-   * @return a list of named components defined in the rootHaxeClasses and their supertypes.
-   */
-  @NotNull
-  public static List<HaxeNamedComponent> findNamedSubComponents(boolean unique, @Nullable HaxeGenericResolver parentResolver, @NotNull HaxeClass... rootHaxeClasses) {
-    ProgressIndicatorProvider.checkCanceled();
-    HaxeGenericResolver localResolver = new HaxeGenericResolver();
-    if (parentResolver != null)localResolver.addAll(parentResolver);
-
-    final List<HaxeNamedComponent> unfilteredResult = new ArrayList<>();
-    final HashSet<HaxeClass> processed = new HashSet<>();
-    final List<HaxeClass> temp = Arrays.asList(rootHaxeClasses.clone());
-    final LinkedList<HaxeClass> classes = new LinkedList<>(temp);
-    while (!classes.isEmpty()) {
-      final HaxeClass haxeClass = classes.pollFirst();
-
-      if (haxeClass == null) continue;
-
-      addNotNullComponents(unfilteredResult, getNamedSubComponents(haxeClass));
-      if (haxeClass.isAbstractType()) {
-        if (null == parentResolver) {
-          localResolver = HaxeGenericResolverUtil.generateResolverFromScopeParents(haxeClass);
-        }
-        List<HaxeNamedComponent> subComponents = HaxeAbstractForwardUtil.findAbstractForwardingNamedSubComponents(haxeClass, localResolver);
-        addNotNullComponents(unfilteredResult, subComponents);
-      }
-      if (haxeClass.isTypeDef()) {
-        if (null == parentResolver) {
-          localResolver = haxeClass.getMemberResolver(null);
-        }else {
-          localResolver.addAll(haxeClass.getMemberResolver(null));
-        }
-      }
-      if (haxeClass.isAnonymousType()) {
-        HaxeAnonymousTypeModel model = (HaxeAnonymousTypeModel)haxeClass.getModel();
-        List<ResultHolder> types = model.getCompositeTypes();
-        List<HaxeClass> haxeClasses = types.stream().filter(ResultHolder::isClassType)
-          .map(ResultHolder::getClassType)
-          .filter(Objects::nonNull)
-          .map(SpecificHaxeClassReference::getHaxeClass)
-          .toList();
-
-        List<HaxeNamedComponent> components = findNamedSubComponents(unique, localResolver, haxeClasses.toArray(new HaxeClass[0]));
-        addNotNullComponents(unfilteredResult, components);
-
-
-      }
-      List<HaxeType> baseTypes = new ArrayList<>();
-      baseTypes.addAll(haxeClass.getHaxeExtendsList());
-      baseTypes.addAll(haxeClass.getHaxeImplementsList());
-
-      List<HaxeClass> baseClasses = tryResolveClasses(baseTypes);
-      if (haxeClass.isEnum() && !haxeClass.isAbstractType() && haxeClass.getContext() != null) {
-        //Enums should provide the same methods as EnumValue
-        baseClasses.add(HaxeEnumValueUtil.getEnumValueClass(haxeClass.getContext()).getHaxeClass());
-      }
-      for (HaxeClass baseClass : baseClasses) {
-        if (processed.add(baseClass)) {
-          classes.add(baseClass);
-        }
-      }
-    }
-    if (!unique) {
-      return unfilteredResult;
-    }
-
-    return new ArrayList<>(namedComponentToMap(unfilteredResult).values());
-  }
-
-  public static Map<String, HaxeNamedComponent> namedComponentToMap(List<HaxeNamedComponent> unfilteredResult) {
-    final Map<String, HaxeNamedComponent> result = new HashMap<String, HaxeNamedComponent>();
-    for (HaxeNamedComponent haxeNamedComponent : unfilteredResult) {
-      // need order
-      if (result.containsKey(haxeNamedComponent.getName())) continue;
-      result.put(haxeNamedComponent.getName(), haxeNamedComponent);
-    }
-    return result;
-  }
-
-  @NotNull
-  public static List<HaxeNamedComponent> getNamedSubComponentsInOrder(HaxeClass haxeClass) {
-    final List<HaxeNamedComponent> result = getNamedSubComponents(haxeClass);
-    Collections.sort(result, new Comparator<HaxeNamedComponent>() {
-      @Override
-      public int compare(HaxeNamedComponent o1, HaxeNamedComponent o2) {
-        return o1.getTextOffset() - o2.getTextOffset();
-      }
-    });
-    return result;
-  }
-
-  public static List<HaxeNamedComponent> getAllNamedSubComponentsFromModule(HaxeModule haxeModule) {
-    return getNamedSubComponents(haxeModule);
-
-  }
-
-  public static List<HaxeNamedComponent> getAllNamedSubComponentsFromClassType(HaxeClass haxeClass, HaxeComponentType... fromTypes) {
-    return getAllNamedSubComponentsFromClassType(haxeClass, fromTypes, null);
-  }
-  public static List<HaxeNamedComponent> getAllNamedSubComponentsFromClassType(HaxeClass haxeClass, HaxeComponentType[] fromTypes, List<PsiClass> recursionGuard) {
-    if (recursionGuard == null) recursionGuard =  new ArrayList<>();
-    List<HaxeNamedComponent> components = getNamedSubComponents(haxeClass);
-    List<HaxeComponentType> types = Arrays.asList(fromTypes);
-
-    for (PsiClass superComponent : haxeClass.getSupers()) {
-      if (recursionGuard.contains(superComponent)) continue;
-      recursionGuard.add(superComponent);
-
-      if (types.isEmpty() || types.contains(HaxeComponentType.typeOf(superComponent))) {
-        List<HaxeNamedComponent> type = getAllNamedSubComponentsFromClassType((HaxeClass)superComponent, fromTypes, recursionGuard);
-        components.addAll(type);
-      }
-    }
-
-    if (types.contains(HaxeComponentType.typeOf(haxeClass))) {
-      components.addAll(getNamedSubComponents(haxeClass));
-    }
-
-    return components;
-  }
-
-  /**
-   * Gets all elements defined in a class' body.  This does NOT check superTypes for named elements.
-   *
-   * @param element to inspect
-   * @return a list of all named components declared in the class' body.
-   */
-  public static List<HaxeNamedComponent> getNamedSubComponents(HaxePsiCompositeElement element) {
-    PsiElement body = null;
-    final HaxeComponentType type = HaxeComponentType.typeOf(element);
-    if (type == HaxeComponentType.MODULE) {
-      body = element;
-    } else if (type == HaxeComponentType.CLASS || type == HaxeComponentType.ABSTRACT) {
-      body = PsiTreeUtil.getChildOfAnyType(element, HaxeClassBody.class, HaxeExternClassDeclarationBody.class);
-    } else if (type == HaxeComponentType.INTERFACE) {
-      body = PsiTreeUtil.getChildOfType(element, HaxeInterfaceBody.class);
-    } else if (type == HaxeComponentType.ENUM) {
-      body = PsiTreeUtil.getChildOfType(element, HaxeEnumBody.class);
-    } else if (element instanceof HaxeTypedefDeclaration) {
-      final HaxeTypeOrAnonymous typeOrAnonymous = ((HaxeTypedefDeclaration)element).getTypeOrAnonymous();
-      if (typeOrAnonymous != null && typeOrAnonymous.getAnonymousType() != null) {
-        HaxeAnonymousType anonymous = typeOrAnonymous.getAnonymousType();
-        if (anonymous != null) {
-          return getNamedSubComponents(anonymous);
-        }
-      } else if (typeOrAnonymous != null) {
-        final HaxeClass typeClass = getHaxeClassResolveResult(typeOrAnonymous.getType()).getHaxeClass();
-        assert typeClass != element;
-        return getNamedSubComponents(typeClass);
-      }
-    }
-
-    final List<HaxeNamedComponent> result = new ArrayList<>();
-    if (element instanceof HaxeTypeParameterMultiType multiType) {
-      HaxeTypeParameterMultiTypeModel model = (HaxeTypeParameterMultiTypeModel) multiType.getModel();
-      List<ResultHolder> types = model.getCompositeTypes();
-      for (ResultHolder holder : types) {
-        if (holder.getClassType() != null) {
-          List<HaxeNamedComponent> components = getNamedSubComponents(holder.getClassType().getHaxeClass());
-          result.addAll(components);
-        }
-      }
-    } else if (element instanceof HaxeAnonymousType anonymousType) {
-      HaxeAnonymousTypeModel model = (HaxeAnonymousTypeModel)anonymousType.getModel();
-      result.addAll(model.getAnonymousMethodDeclarations());
-      result.addAll(model.getAnonymousFieldDeclarations());
-      result.addAll(model.getAnonymousOptionalFieldDeclarations());
-      return result;
-
-    } else if (element instanceof HaxeObjectLiteral objectLiteral) {
-      HaxeClassModel model = objectLiteral.getModel();
-      List<HaxeNamedComponent> componentNames = model.getMembers(null)
-        .stream()
-        .map(HaxeBaseMemberModel::getNamedComponentPsi)
-        .toList();
-      result.addAll(componentNames);
-    }
-
-
-    if (body != null) {
-      final HaxeNamedComponent[] namedComponents = PsiTreeUtil.getChildrenOfType(body, HaxeNamedComponent.class);
-      if (namedComponents != null) {
-        result.addAll(Arrays.asList(namedComponents));
-      }
-    }
-
     return result;
   }
 
@@ -969,21 +729,8 @@ public class HaxeResolveUtil {
     if (haxeClass == null && type != null) {
       PsiElement resolve = type.getReferenceExpression().resolve();
       if (resolve instanceof HaxeGenericListPart listPart) {
-
-        HaxeGenericConstraintPart constraintPart = listPart.getGenericConstraintPart();
-        if (constraintPart != null && constraintPart.getTypeListPart() != null) {
-          HaxeTypeOrAnonymous typeOrAnonymous = constraintPart.getTypeListPart().getTypeOrAnonymous();
-          if (typeOrAnonymous != null) {
-            HaxeType haxeType = typeOrAnonymous.getType();
-            HaxeAnonymousType anonymousType = typeOrAnonymous.getAnonymousType();
-            if (haxeType != null) {
-              haxeClass = HaxeTypeParameterMultiType.withTypeList(resolve.getNode(), List.of(haxeType));
-            }
-            else if (anonymousType != null) {
-              haxeClass = anonymousType;
-            }
-          }
-        }
+        // TypeParameters does not have generics so just creating an instance is ok here
+        return  listPart.getModel().getInstanceType().getType().asResolveResult();
       }
     }
     if (null != haxeClass && haxeClass.isGeneric()) {
@@ -1133,14 +880,16 @@ public class HaxeResolveUtil {
   }
 
   private static String tryResolveFullyQualifiedHaxeReferenceExpression(PsiElement type) {
-    if (type instanceof HaxeReferenceExpression) {
+    if (type instanceof HaxeReferenceExpression referenceExpression) {
       HaxeReferenceExpression topmostParentOfType = PsiTreeUtil.getTopmostParentOfType(type, HaxeReferenceExpression.class);
 
       if (topmostParentOfType == null) {
-        topmostParentOfType = (HaxeReferenceExpression)type;
+        topmostParentOfType = referenceExpression;
       }
 
-      HaxeClass haxeClass = findClassByQName(topmostParentOfType.getText(), topmostParentOfType.getContext());
+      if (!canBeQname(topmostParentOfType)) return null;
+
+        HaxeClass haxeClass = findClassByQName(topmostParentOfType.getText(), topmostParentOfType.getContext());
       if (haxeClass != null) {
         return topmostParentOfType.getText();
       }
@@ -1202,6 +951,13 @@ public class HaxeResolveUtil {
       type = ((HaxeType)type).getReferenceExpression();
     }
 
+    if(type instanceof  HaxeCallExpression) {
+      return null;
+    }
+    if(type instanceof  HaxeNewExpression) {
+      return null;
+    }
+
     String className = type.getText();
     PsiElement result = null;
 
@@ -1243,10 +999,11 @@ public class HaxeResolveUtil {
     }
 
     if (result == null && className != null) {
-      //make sure we  wont try to files with invalid characters
-      if (className.matches("[^:<>{}()/]+")) {
-        result = findClassByQName(className, type.getContext());
+      // check if Reference, and if it  contains elements that can not be part of Qname
+      if (type instanceof HaxeReference reference) {
+        if (!canBeQname(reference)) return null;
       }
+      result = findClassByQName(className, type.getContext());
     }
 
     return result instanceof HaxeClass haxeClass ? haxeClass : null;
@@ -1421,61 +1178,86 @@ public class HaxeResolveUtil {
 
   @Nullable
   public static String getQName(PsiFile file, final String name, boolean searchInSamePackage, boolean searchParentPackages, HaxeType targetReference) {
+    if (file instanceof HaxeFile haxeFile) {
+      HaxeModule module = PsiTreeUtil.getChildOfType(file, HaxeModule.class);
+      if (module != null) {
+        @NotNull PsiElement[] moduleChildren = module.getChildren();
+        HaxeClass classForType = null;
+        for (PsiElement child : moduleChildren) {
+          if (child instanceof HaxeClass && name.equals(((HaxeClass) child).getName())) {
+            classForType = (HaxeClass) child;
+            break;
+          }
+        }
 
+        if (classForType != null) {
+          return classForType.getQualifiedName();
+        }
+      }
+      List<HaxeImportStatement> importStatements = haxeFile.getImportStatements();
+      final HaxeImportStatement importStatement = searchImportStatementForExposedMember(name, importStatements);
 
-
-    HaxeModule module = PsiTreeUtil.getChildOfType(file, HaxeModule.class);
-    if (module != null) {
-      @NotNull PsiElement[] moduleChildren = module.getChildren();
-      HaxeClass classForType = null;
-      for (PsiElement child : moduleChildren) {
-        if (child instanceof HaxeClass && name.equals(((HaxeClass)child).getName())) {
-          classForType = (HaxeClass)child;
-          break;
+      if (importStatement != null) {
+        PsiElement element = importStatement.getModel().exposeByName(name);
+        if (element instanceof HaxeClass classModel) {
+          return classModel.getQualifiedName();
+        }
+        // fallback if we dont have a HaxeClass
+        final HaxeExpression importStatementExpression = importStatement.getReferenceExpression();
+        if (importStatementExpression != null) {
+          return importStatementExpression.getText();
         }
       }
 
-      if (classForType != null) {
-        return classForType.getQualifiedName();
-      }
-    }
-    @NotNull PsiElement[] fileChildren = file.getChildren();
-    final HaxeImportStatement importStatement =
-      (HaxeImportStatement)(StreamUtil.reverse(Arrays.stream(fileChildren))
-                              .filter(element ->
-                                        element instanceof HaxeImportStatement impStatement
-                                        && impStatement.getModel().exposeByName(name) != null)
-                              .findFirst()
-                              .orElse(null));
+      List<HaxeUsingStatement> usingStatements = haxeFile.getUsingStatements();
+      final HaxeUsingStatement usingStatement = searchUsingStatementForExposedMember(name, usingStatements);
 
-    final HaxeExpression importStatementExpression = importStatement == null ? null : importStatement.getReferenceExpression();
-    if (importStatementExpression != null) {
-      PsiElement element = importStatement.getModel().exposeByName(name);
-      if (element instanceof HaxeClass classModel) {
-        return classModel.getQualifiedName();
+      if (usingStatement != null) {
+        PsiElement element = usingStatement.getModel().exposeByName(name);
+        if (element instanceof HaxeClass classModel) {
+          return classModel.getQualifiedName();
+        }
+        // fallback if we dont have a HaxeClass
+        return usingStatement.getText();
       }
-      // fallback if we dont have a HaxeClass
-      return importStatementExpression.getText();
-    }
 
-    if (searchInSamePackage && fileChildren.length > 0) {
-      final HaxeFileModel fileModel = HaxeFileModel.fromElement(fileChildren[0]);
-      if (fileModel != null) {
-        final HaxePackageModel packageModel = fileModel.getPackageModel();
-        if (packageModel != null) {
-          final HaxeClassModel classModel = packageModel.getClassModel(name);
-          if (classModel != null) {
-            return classModel.haxeClass.getQualifiedName();
+      @NotNull PsiElement[] fileChildren = file.getChildren();
+      if (searchInSamePackage && fileChildren.length > 0) {
+        final HaxeFileModel fileModel = HaxeFileModel.fromElement(fileChildren[0]);
+        if (fileModel != null) {
+          final HaxePackageModel packageModel = fileModel.getPackageModel();
+          if (packageModel != null) {
+            final HaxeClassModel classModel = packageModel.getClassModel(name);
+            if (classModel != null) {
+              return classModel.haxeClass.getQualifiedName();
+            }
           }
         }
       }
-    }
-    if (searchParentPackages && targetReference != null) {
-      HaxeClass haxeClass = findClassByQNameInSuperPackages(targetReference);
-      if (haxeClass != null) return haxeClass.getQualifiedName();
+      if (searchParentPackages && targetReference != null) {
+        HaxeClass haxeClass = findClassByQNameInSuperPackages(targetReference);
+        if (haxeClass != null) return haxeClass.getQualifiedName();
+      }
     }
     return null;
   }
+
+
+  private static @Nullable HaxeImportStatement searchImportStatementForExposedMember(String name, @NotNull List<HaxeImportStatement> importStatements) {
+    return importStatements.stream()
+            .filter(impStatement-> impStatement.getModel().exposeByName(name) != null)
+            .findFirst()
+            .orElse(null);
+
+  }
+
+  private static @Nullable HaxeUsingStatement searchUsingStatementForExposedMember(String name, List<HaxeUsingStatement>  usingStatements) {
+    return usingStatements.stream()
+            .filter(impStatement-> impStatement.getModel().exposeByName(name) != null)
+            .findFirst()
+            .orElse(null);
+  }
+
 
   @Nullable
   public static PsiComment findDocumentation(HaxeNamedComponent element) {
@@ -1580,14 +1362,19 @@ public class HaxeResolveUtil {
     return null;
   }
 
-  public static HaxeEnumValueDeclaration resolveExtractorEnumValueDeclaration(SpecificHaxeClassReference enumClass, HaxeEnumArgumentExtractor extractor) {
-    return resolveExtractorEnumValueDeclaration(enumClass, extractor.getEnumValueReference().getReferenceExpression().getIdentifier().getText());
+  public static PsiElement resolveEnumValueDeclaration(SpecificHaxeClassReference enumClass, HaxeEnumArgumentExtractor extractor) {
+    return resolveEnumValueDeclaration(enumClass, extractor.getEnumValueReference().getReferenceExpression().getIdentifier().getText());
   }
-  public static HaxeEnumValueDeclaration resolveExtractorEnumValueDeclaration(SpecificHaxeClassReference enumClass, String memberName) {
+  public static PsiElement resolveEnumValueDeclaration(SpecificHaxeClassReference enumClass, String memberName) {
     if (enumClass != null) {
       HaxeBaseMemberModel member = enumClass.getHaxeClassModel().getMember(memberName, enumClass.getGenericResolver());
       if (member instanceof HaxeEnumValueConstructorModel enumValueModel) {
         return enumValueModel.getEnumValuePsi();
+      }
+      if (member instanceof HaxeEnumValueModel enumValueModel) {
+        HaxeEnumValueDeclaration enumValuePsi = enumValueModel.getEnumValuePsi();
+        if(enumValuePsi != null) return enumValuePsi;
+        return enumValueModel.getBasePsi();
       }
     }
     return null;

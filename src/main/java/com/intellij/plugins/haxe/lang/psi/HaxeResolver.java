@@ -20,21 +20,25 @@
 package com.intellij.plugins.haxe.lang.psi;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.RecursionGuard;
 import com.intellij.openapi.util.RecursionManager;
-import com.intellij.plugins.haxe.ide.annotator.semantics.HaxeCallExpressionUtil;
 import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypes;
-import com.intellij.plugins.haxe.lang.psi.impl.HaxeClassWrapperForTypeParameter;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxeReferenceExpressionImpl;
+import com.intellij.plugins.haxe.lang.psi.impl.HaxeTypeParameterDeclaration;
 import com.intellij.plugins.haxe.metadata.psi.HaxeMeta;
 import com.intellij.plugins.haxe.metadata.psi.HaxeMetadataCompileTimeMeta;
 import com.intellij.plugins.haxe.metadata.util.HaxeMetadataUtils;
 import com.intellij.plugins.haxe.model.*;
 import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluator;
 import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluatorContext;
+import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionContext;
+import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionEvaluation;
+import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionUtil;
 import com.intellij.plugins.haxe.model.type.*;
+import com.intellij.plugins.haxe.model.type.HaxeArgument;
 import com.intellij.plugins.haxe.util.HaxeAbstractForwardUtil;
 import com.intellij.plugins.haxe.util.HaxeDebugUtil;
 import com.intellij.plugins.haxe.util.HaxeResolveUtil;
@@ -86,20 +90,13 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
 
   private final RecursionGuard<PsiElement> resolveInnerRecursionGuard = RecursionManager.createGuard("resolveInnerRecursionGuard");
 
-  public static void prohibitResultCaching(@NotNull PsiElement element) {
-    INSTANCE.resolveInnerRecursionGuard.prohibitResultCaching(element);
-  }
-
   @Override
   public List<? extends PsiElement> resolve(@NotNull HaxeReference reference, boolean incompleteCode) {
        /** See docs on {@link HaxeDebugUtil#isCachingDisabled} for how to set this flag. */
        boolean skipCachingForDebug = HaxeDebugUtil.isCachingDisabled();
 
-       //// Kill circular resolutions -- before checking the cache.
-       //if (isResolving(reference)) {
-       //  recursiveLookupFailures.get().incrementAndGet();
-       //  return null;
-       //}
+      ProgressIndicatorProvider.checkCanceled();
+
 
        // If we are in dumb mode (e.g. we are still indexing files and resolving may
        // fail until the indices are complete), we don't want to cache the (likely incorrect)
@@ -110,7 +107,7 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
 
         List<? extends PsiElement>  elements  = skipCaching ? doResolve(reference, incompleteCode)
                          : ResolveCache.getInstance(reference.getProject())
-                       .resolveWithCaching(reference, this::doResolve, false, incompleteCode);
+                       .resolveWithCaching(reference, this::doResolve, true, incompleteCode);
 
        if (reportCacheMetrics) {
          if (skipCachingForDebug) {
@@ -179,7 +176,7 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
   }
 
   private List<? extends PsiElement> doResolveInner(@NotNull HaxeReference reference, boolean incompleteCode, String referenceText) {
-    RecursionManager.markStack();
+
     if (reportCacheMetrics) {
       resolves.incrementAndGet();
     }
@@ -192,14 +189,22 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
     boolean isType = reference.getParent() instanceof HaxeType ||  PsiTreeUtil.getParentOfType(reference, HaxeTypeTag.class) != null;
     List<? extends PsiElement> result = checkIsTypeParameter(reference);
 
+    // NOTE: always Keep checkIsType  high up, it is used a lot (ex. when resolving type for HaxeType)
+    // and moving it down the stack will only result in unnecessary overhead and potential recursion problems
+    if (result == null) result = checkIsType(reference); //HaxeReferenceExpression
+    if (result == null) result = checkIsChain(reference);  //HaxeReferenceExpression
+
     if (result == null) result = checkIsAlias(reference);
     if (result == null) result = checkEnumMemberHints(reference);
-    if (result == null) result = checkIsType(reference);
+
     if (result == null) result = checkIsFullyQualifiedStatement(reference);
     if (result == null) result = checkIsSuperExpression(reference);
     if (result == null) result = checkMacroIdentifier(reference);
-    if (result == null) result = checkIsChain(reference);
+
     if (result == null) result = checkIsAccessor(reference);
+    if (result == null) result = checkElementUsage(reference);
+    if (result == null) result = checkCaptureVarReference(reference);
+    if (result == null) result = checkEnumExtractor(reference);// do before walking tree
     if (result == null) result = checkIsSwitchVar(reference);
     if (result == null) result = checkByTreeWalk(reference);  // Beware: This will also locate constraints in scope.
 
@@ -208,9 +213,7 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
     if (result == null)result =  searchInSameFile(reference, fileModel, isType);
     if (result == null) result = checkIsClassName(reference);
     if (result == null) result = checkCaptureVar(reference);
-    if (result == null) result = checkCaptureVarReference(reference);
     if (result == null) result = checkSwitchOnEnum(reference);
-    if (result == null) result = checkEnumExtractor(reference);
     if (result == null) result = checkMemberReference(reference); // must be after resolvers that can find identifier inside a method
     if (result == null) {
 
@@ -229,8 +232,8 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
               int expectedSize = Optional.ofNullable(callExpression.getExpressionList()).map(e -> e.getExpressionList().size()).orElse(0);
 
               // check type hinting for enumValues
-              for (PsiElement element : matchesInImport) {
-                if (element instanceof  HaxeEnumValueDeclaration enumValueDeclaration) {
+              for (PsiElement importElement : matchesInImport) {
+                if (importElement.getParent() instanceof  HaxeEnumValueDeclaration enumValueDeclaration) {
                   PsiElement typeHintPsi = reference;
 
                   if (reference.getParent() instanceof  HaxeCallExpression expression) {
@@ -240,25 +243,26 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
                   String data = typeHintPsi.getUserData(typeHintKey);
                   if (currentQname != null && currentQname.equals(data)) {
                     LogResolution(reference, "via import & typeHintKey");
-                    return List.of(element);
+                    return List.of(importElement);
                   }
                 }
               }
+
               // test  call expression if possible
               for (PsiElement importElement : matchesInImport) {
-                if (importElement instanceof HaxeEnumValueDeclarationConstructor enumValueDeclaration) {
+                if (importElement.getParent() instanceof HaxeEnumValueDeclarationConstructor enumValueDeclaration) {
                   boolean isValidConstructor = testAsEnumValueConstructor(enumValueDeclaration, reference);
                   if (isValidConstructor) return List.of(importElement);
                 }
               }
               // fallback, check method parameters (needs work , optional are not handled)
-              for (PsiElement element : matchesInImport) {
-                if (element instanceof HaxeEnumValueDeclarationConstructor enumValueDeclaration) {
+              for (PsiElement importElement : matchesInImport) {
+                if (importElement.getParent() instanceof HaxeEnumValueDeclarationConstructor enumValueDeclaration) {
                   int currentSize =
                     Optional.of(enumValueDeclaration.getParameterList()).map(p -> p.getParameterList().size()).orElse(0);
                   if (expectedSize == currentSize) {
                     LogResolution(reference, "via import  & enum value declaration");
-                    return List.of(element);
+                    return List.of(importElement);
                   }
                 }
               }
@@ -298,11 +302,118 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
 
   }
 
+  // Experimental
+  // attempt at correctly resolve types that are not in import statements when valueExpressions
+  // are used as parameters or assigned to other classes.
+  private List<? extends PsiElement> checkElementUsage(@NotNull PsiElement reference) {
+
+    if (reference instanceof HaxeReferenceExpression) {
+      PsiElement parent = reference.getParent();
+      if (parent == null) return null;
+      ResultHolder expectedType = findParentAssignType(parent);
+      if (expectedType != null) {
+        if (expectedType.getClassType() != null) {
+          HaxeClass haxeClass = expectedType.getClassType().getHaxeClass();
+          if (haxeClass != null) {
+            // check Enum values
+            if(haxeClass.isEnum()) {
+              if(haxeClass.getModel() instanceof  HaxeEnumModel enumModel) {
+                for (HaxeEnumValueModel value : enumModel.getValues()) {
+                  if(value.getNamePsi().textMatches(reference)) {
+                    return List.of(value.getNamePsi());
+                  }
+                }
+              }
+              // check Class names
+            }else {
+              HaxeComponentName componentName = haxeClass.getComponentName();
+              if (componentName != null && componentName.textMatches(reference)) {
+                return List.of(componentName);
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // Experimental
+  // try to step one level up until we find a type definition and then pass that back down
+  private ResultHolder findParentAssignType(@NotNull PsiElement reference) {
+    return findParentAssignType(reference, false);
+  }
+  private ResultHolder findParentAssignType(@NotNull PsiElement reference, boolean isValueExpression) {
+    PsiElement parent = reference.getParent();
+    if (parent == null) return null;
+
+    if(parent instanceof  HaxeValueExpression) {
+      isValueExpression = true;
+    }
+
+    // final psi types (the ones where we can get expected type from)
+    if(isValueExpression) {
+
+      if (parent instanceof HaxeNewExpression newExpression) {
+        PsiElement resolve = newExpression.getType().getReferenceExpression().resolve();
+        if (resolve instanceof HaxeClassDeclaration declaration) {
+          HaxeMethodModel constructor = declaration.getModel().getConstructor(null);
+          if (constructor != null) {
+            int index = newExpression.getExpressionList().indexOf(reference);
+            HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForConstructorCall(newExpression);
+            if (context != null) {
+              HaxeCallExpressionEvaluation evaluate = context.evaluate();
+              return evaluate.getParameterType(index);
+            }
+          }
+        }
+      }
+      if (parent instanceof HaxeCallExpressionList expressionList) {
+        HaxeCallExpression callExpression = PsiTreeUtil.getParentOfType(expressionList, HaxeCallExpression.class);
+        if (callExpression != null) {
+          if (callExpression.getExpression() instanceof HaxeReferenceExpression referenceExpression) {
+            PsiElement resolve = referenceExpression.resolve();
+            if (resolve instanceof HaxeMethod method) {
+              int index = expressionList.getExpressionList().indexOf(reference);
+              HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForMethodCall(callExpression, method);
+              HaxeCallExpressionEvaluation evaluate = context.evaluate();
+              return evaluate.getParameterType(index);
+            }
+          }
+        }
+      }
+      if (parent instanceof HaxeVarInit varInit) {
+        HaxePsiField field = PsiTreeUtil.getParentOfType(varInit, HaxePsiField.class);
+        if (field != null) {
+          HaxeTypeTag typeTag = field.getTypeTag();
+          if (typeTag != null) {
+            return HaxeTypeResolver.getTypeFromTypeTag(typeTag, field);
+          }
+        }
+      }
+    }
+
+    // todo mlo: do we need to do something for object literals ?
+
+    if (parent instanceof HaxeArrayLiteral) {
+      ResultHolder type = findParentAssignType(parent, isValueExpression);
+      // unwrap array type since its a literal we are in
+      if(type!= null && !type.isUnknown() && type.getClassType() != null) {
+        @NotNull ResultHolder[] specifics = type.getClassType().getSpecifics();
+        if(specifics.length > 0 ) return specifics[0];
+      }
+      return null;
+    }
+
+    return findParentAssignType(parent, isValueExpression);
+  }
+
   private static boolean testAsEnumValueConstructor(@NotNull HaxeEnumValueDeclarationConstructor enumValueDeclaration, @NotNull HaxeReference reference) {
       if (reference.getParent() instanceof HaxeCallExpression haxeCallExpression) {
         HaxeMethod method = enumValueDeclaration.getModel().getMethod();
-        HaxeCallExpressionUtil.CallExpressionValidation validation = HaxeCallExpressionUtil.checkMethodCall(haxeCallExpression, method);
-        return validation.isCompleted() && validation.getErrors().isEmpty();
+        HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForMethodCall(haxeCallExpression, method);
+        HaxeCallExpressionEvaluation validation = context.evaluate();
+        return validation.isCompleted() && validation.isValid();
       }
     return false;
   }
@@ -409,7 +520,7 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
       if (!(referenceParent instanceof HaxeType)) {
         HaxeParameter parameterFromReferenceExpression = null;
         HaxePsiField fieldFromReferenceExpression = null;
-        HaxeAssignExpression assignExpression = PsiTreeUtil.getParentOfType(reference, HaxeAssignExpression.class);
+        HaxeAssignExpression assignExpression = PsiTreeUtil.getParentOfType(reference, HaxeAssignExpression.class, true, HaxeCallExpression.class);
         if (assignExpression != null) {
           HaxeExpression left = assignExpression.getLeftExpression();
           //guard to avoid another resolve of the same reference, and attempts to check assignExpression for only part of a reference expression
@@ -484,10 +595,10 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
           ResultHolder result = HaxeExpressionEvaluator.evaluate(callExpression.getExpression(), new HaxeGenericResolver()).result;
           SpecificFunctionReference functionType = result.getFunctionType();
           if(functionType != null) {
-            List<SpecificFunctionReference.Argument> arguments = functionType.getArguments();
+            List<HaxeArgument> arguments = functionType.getArguments();
             if (index > -1) {
               while (index < arguments.size()) {
-                SpecificFunctionReference.Argument argument = arguments.get(index++);
+                HaxeArgument argument = arguments.get(index++);
                 ResultHolder type = argument.getType();
                 if (type != null && type.isEnum()) {
                   SpecificHaxeClassReference classType = type.getClassType();
@@ -529,11 +640,12 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
           if (argumentList != null) {
             int argumentIndex = argumentList.getExpressionList().indexOf(argument);
             if (argumentIndex > -1) {
-            HaxeCallExpressionUtil.CallExpressionValidation validation = HaxeCallExpressionUtil.checkMethodCall(methodCallCall, haxeMethod);
-              Integer parameter = validation.getArgumentToParameterIndex().get(argumentIndex);
-              ResultHolder holder = validation.getParameterIndexToType().get(parameter);
-              if (holder != null) {
-                SpecificHaxeClassReference possibleType = holder.getClassType();
+              HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForMethodCall(methodCallCall, haxeMethod);
+              HaxeCallExpressionEvaluation validation = context.evaluate();
+              int parameterIndex = validation.getParameterForArgument(argumentIndex);
+              ResultHolder parameterType = validation.getParameterType(parameterIndex);
+              if (parameterType != null) {
+                SpecificHaxeClassReference possibleType = parameterType.getClassType();
                 if (possibleType != null && possibleType.isEnumType()) {
                   List<HaxeComponentName> member = findEnumMember(reference, possibleType);
                   if (member != null) return member;
@@ -548,14 +660,17 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
       List<HaxeExpression> argumentList = constructorCall.getExpressionList();
       int argumentIndex = argumentList.indexOf(argument);
       if (argumentIndex> -1) {
-        HaxeCallExpressionUtil.CallExpressionValidation validation = HaxeCallExpressionUtil.checkConstructor(constructorCall);
-        Integer parameter = validation.getArgumentToParameterIndex().get(argumentIndex);
-        ResultHolder holder = validation.getParameterIndexToType().get(parameter);
-        if (holder != null) {
-          SpecificHaxeClassReference possibleType = holder.getClassType();
-          if (possibleType != null && possibleType.isEnumType()) {
-            List<HaxeComponentName> member = findEnumMember(reference, possibleType);
-            if (member != null) return member;
+        HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForConstructorCall(constructorCall);
+        if (context != null) {
+          HaxeCallExpressionEvaluation validation = context.evaluate();
+          int parameterIndex = validation.getParameterForArgument(argumentIndex);
+          ResultHolder parameterType = validation.getParameterType(parameterIndex);
+          if (parameterType != null) {
+            SpecificHaxeClassReference possibleType = parameterType.getClassType();
+            if (possibleType != null && possibleType.isEnumType()) {
+              List<HaxeComponentName> member = findEnumMember(reference, possibleType);
+              if (member != null) return member;
+            }
           }
         }
       }
@@ -670,16 +785,50 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
     final HaxeReference leftReference = HaxeResolveUtil.getLeftReference(reference);
     // check if reference is to a member in  class or abstract
     //   null:      it's a direct reference (not a chain, could be normal class member access)
-    //   this:      this class member access
+    //   abstract:  access abstract members
+    //   this:      this class member access / underlying type access (abstract)
     //   super:      super class member access (used when overriding methods and calling base method)
-    //   abstract:  similar to "this" but for abstracts
-    if (leftReference == null || leftReference.textMatches("this")  || leftReference.textMatches("super")  || leftReference.textMatches("abstract")) {
+
+    boolean isEmpty = leftReference == null;
+
+    if (isEmpty) {
       HaxeClass type = PsiTreeUtil.getParentOfType(reference, HaxeClass.class);
-      List<? extends PsiElement> superElements = resolveBySuperClassAndSymbol(type, reference);
+      List<? extends PsiElement> superElements = resolveBySuperClassAndSymbol(type, reference, false);
       if (!superElements.isEmpty()) {
         LogResolution(reference, "via super field.");
         return superElements;
       }
+    }
+
+    boolean isAbstract = !isEmpty && leftReference.textMatches("abstract");
+    boolean isSuper = !isEmpty && leftReference.textMatches("super");
+    boolean isThis = !isEmpty && leftReference.textMatches("this");
+    if (isEmpty| isThis || isSuper || isAbstract) {
+
+      HaxeClass type = PsiTreeUtil.getParentOfType(reference, HaxeClass.class);
+      if (type instanceof HaxeAbstractTypeDeclaration) {
+
+        if(isAbstract || isEmpty) {
+          List<? extends PsiElement> superElements = resolveBySuperClassAndSymbol(type, reference, false);
+          if (!superElements.isEmpty()) {
+            LogResolution(reference, "via abstract field. (Abstract - abstract keyword)");
+            return superElements;
+          }
+        }else if (isThis) {
+          List<? extends PsiElement> superElements = resolveBySuperClassAndSymbol(type, reference, true);
+          if (!superElements.isEmpty()) {
+            LogResolution(reference, "via super field. (Abstract - this keyword)");
+            return superElements;
+          }
+        }
+      } else {
+        List<? extends PsiElement> superElements = resolveBySuperClassAndSymbol(type, reference, false);
+        if (!superElements.isEmpty()) {
+          LogResolution(reference, "via super field. (class)");
+          return superElements;
+        }
+      }
+
     }
     return null;
   }
@@ -760,7 +909,7 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
       HaxeEnumArgumentExtractor argumentExtractor = PsiTreeUtil.getParentOfType(reference, HaxeEnumArgumentExtractor.class);
       SpecificHaxeClassReference classReference = HaxeResolveUtil.resolveExtractorEnum(argumentExtractor);
       if (classReference != null) {
-        HaxeEnumValueDeclaration declaration = HaxeResolveUtil.resolveExtractorEnumValueDeclaration(classReference, argumentExtractor);
+        PsiElement declaration = HaxeResolveUtil.resolveEnumValueDeclaration(classReference, argumentExtractor);
         if (declaration != null) {
           LogResolution(reference, "via enum extractor");
           return List.of(declaration);
@@ -783,8 +932,7 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
           HaxeClass haxeClass = result.getHaxeClass();
           if (haxeClass != null && haxeClass.isEnum()) {
             SpecificHaxeClassReference classReference = result.getSpecificClassReference(haxeClass, null);
-            HaxeEnumValueDeclaration declaration =
-              HaxeResolveUtil.resolveExtractorEnumValueDeclaration(classReference, reference.getText());
+            PsiElement declaration = HaxeResolveUtil.resolveEnumValueDeclaration(classReference, reference.getText());
             if (declaration != null) {
               LogResolution(reference, "via enum extractor");
               return List.of(declaration);
@@ -805,7 +953,7 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
             return List.of(expression1);
           }
         }else {
-          LogResolution(reference, "via switch-case reference as var");
+          LogResolution(reference, "via switch-case reference as var (without var keyword)");
           return List.of(expression);
         }
       }
@@ -817,25 +965,39 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
     if (reference instanceof HaxeReferenceExpression) {
       HaxeSwitchCase switchCase = PsiTreeUtil.getParentOfType(reference, HaxeSwitchCase.class);
       if (switchCase != null) {
-        for (HaxeSwitchCaseExpr expr : switchCase.getSwitchCaseExprList()) {
-          HaxeExpression expression = expr.getExpression();
-          if (expression instanceof HaxeEnumArgumentExtractor extractor) {
-            List<HaxeExpression> expressionList = extractor.getEnumExtractorArgumentList().getExpressionList();
-            for (HaxeExpression haxeExpression : expressionList) {
-              if (haxeExpression instanceof HaxeExtractorMatchExpression matchExpression) {
-                HaxeExpression PossibleCapture = matchExpression.getSwitchCaseExpr().getExpression();
-                if (PossibleCapture != null && PossibleCapture.textMatches(reference)) {
-                  LogResolution(reference, "via switch argument extractor");
-                  return List.of(PossibleCapture);
-                }
-              }
+        //
+        if(reference.getParent() instanceof HaxeSwitchCaseExpr switchCaseExpr) {
+          if (switchCaseExpr.getParent() instanceof HaxeExtractorMatchExpression matchExpression) {
+            HaxeExpression PossibleCapture = matchExpression.getSwitchCaseExpr().getExpression();
+            if (PossibleCapture != null && PossibleCapture.textMatches(reference)) {
+              LogResolution(reference, "via switch argument extractor");
+              return List.of(PossibleCapture);
             }
           }
-          else if (expression instanceof HaxeExtractorMatchExpression matchExpression) {
-            HaxeReferenceExpression referenceFromExtractor = getReferenceFromExtractorMatchExpression(matchExpression);
-            if (referenceFromExtractor!= null && reference.textMatches(referenceFromExtractor)) {
-              LogResolution(reference, "via witch extractor");
-              return List.of(referenceFromExtractor);
+        }
+        HaxeSwitchCaseBlock switchCaseBlock = PsiTreeUtil.getParentOfType(reference, HaxeSwitchCaseBlock.class);
+        if(switchCaseBlock != null) {
+          for (HaxeSwitchCaseExpr expr : switchCase.getSwitchCaseExprList()) {
+            Collection<HaxeSwitchCaseExpr> haxeSwitchCaseExprs = PsiTreeUtil.findChildrenOfType(expr, HaxeSwitchCaseExpr.class);
+            for (HaxeSwitchCaseExpr haxeSwitchCaseExpr : haxeSwitchCaseExprs) {
+              if (haxeSwitchCaseExpr.getParent() instanceof HaxeEnumArgumentExtractor extractor) {
+                List<HaxeExpression> expressionList = extractor.getEnumExtractorArgumentList().getExpressionList();
+                for (HaxeExpression haxeExpression : expressionList) {
+                  if (haxeExpression instanceof HaxeExtractorMatchExpression matchExpression) {
+                    HaxeExpression PossibleCapture = matchExpression.getSwitchCaseExpr().getExpression();
+                    if (PossibleCapture != null && PossibleCapture.textMatches(reference)) {
+                      LogResolution(reference, "via switch argument extractor");
+                      return List.of(PossibleCapture);
+                    }
+                  }
+                }
+              } else if (haxeSwitchCaseExpr.getParent() instanceof HaxeExtractorMatchExpression matchExpression) {
+                HaxeReferenceExpression referenceFromExtractor = getReferenceFromExtractorMatchExpression(matchExpression);
+                if (referenceFromExtractor != null && reference.textMatches(referenceFromExtractor)) {
+                  LogResolution(reference, "via witch extractor");
+                  return List.of(referenceFromExtractor);
+                }
+              }
             }
           }
         }
@@ -1318,17 +1480,21 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
 
   @Nullable
   private List<? extends PsiElement> checkIsChain(@NotNull HaxeReference reference) {
-    final HaxeReference leftReference = HaxeResolveUtil.getLeftReference(reference);
-    if (leftReference != null) {
-      List<? extends PsiElement> result = resolveChain(leftReference, reference);
-      if (result != null && !result.isEmpty()) {
-        LogResolution(reference, "via simple chain using leftReference.");
-        return result;
-      }
-      LogResolution(reference, "via simple chain against package.");
-      PsiElement item = resolveQualifiedReference(reference);
-      if (item != null) {
-        return asList(item);
+    if (reference instanceof HaxeReferenceExpression referenceExpression) {
+      final HaxeReference leftReference = HaxeResolveUtil.getLeftReference(referenceExpression);
+      if (leftReference != null) {
+        List<? extends PsiElement> result = resolveChain(leftReference, reference);
+        if (result != null && !result.isEmpty()) {
+          LogResolution(reference, "via simple chain using leftReference.");
+          return result;
+        }
+        if (canBeQname(reference)) {
+          PsiElement item = resolveQualifiedReference(reference);
+          if (item != null) {
+            LogResolution(reference, "via simple chain against package.");
+            return asList(item);
+          }
+        }
       }
     }
     return null;
@@ -1342,6 +1508,27 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
       return asList(resultClass.getComponentName());
     }
     return null;
+  }
+
+  public static boolean canBeQname(@NotNull HaxeReference reference) {
+    PsiElement firstChild = reference.getFirstChild();
+    // before attempting a Qname lookup, make sure reference does not contain callExpression, parenthesizedExpression
+    // or other stuff that is not part of a Qname (it should only contain  reference, identifier or token)
+    while(   firstChild instanceof HaxeReference
+          || firstChild instanceof HaxeIdentifier
+          || firstChild instanceof HaxePsiToken
+    ) {
+      if(firstChild instanceof  HaxeCallExpression) break;
+      if(firstChild instanceof  HaxeParenthesizedExpressionReference) break;
+      if(firstChild instanceof  HaxeNewExpression) break;
+
+      firstChild = firstChild.getFirstChild();
+
+      if(firstChild == null) {
+       return true;
+      }
+    }
+    return false;
   }
 
   @Nullable
@@ -1366,34 +1553,37 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
 
   @Nullable
   private List<? extends PsiElement> checkIsType(HaxeReference reference) {
-    final HaxeType type = PsiTreeUtil.getParentOfType(reference, HaxeType.class);
-    if (type != null) {
-      final HaxeClass haxeClassInType = HaxeResolveUtil.tryResolveClassByQName(type);
-      if (type != null && haxeClassInType != null) {
-        LogResolution(reference, "via parent type name.");
-        return asList(haxeClassInType.getComponentName());
-      }
-      //  check if module member
-      //  we might get a match on class with module name (default class), but the type we are looking for is not a child of default class
-      //  so we search the parent file for other classes
-      @NotNull PsiElement[] children = reference.getChildren();
-      if(children.length > 1) {
-        if (children[0] instanceof HaxeReference child) {
-          List<? extends PsiElement> resolve = resolve(child, false);
-          if (!resolve.isEmpty()) {
-            PsiFile containingFile = resolve.get(0).getContainingFile();
-            if (containingFile instanceof  HaxeFile haxeFile) {
-              HaxeClassModel model = haxeFile.getModel().getClassModel(children[1].getText());
-              if (model != null) {
-                HaxeComponentName componentName = model.haxeClass.getComponentName();
-                if(componentName!= null){
-                  LogResolution(reference, "via module scan.");
-                  return List.of(componentName);
+    if (reference instanceof HaxeReferenceExpression referenceExpression) {
+      // only check one "level up", if we go multiple parents up we might get a different reference's value
+      // if we are resolving  a.b  in  a.b.c.Type we want to resolve the package "b" and not Type in package "c".
+      if (referenceExpression.getParent() instanceof HaxeType type) {
+          final HaxeClass haxeClassInType = HaxeResolveUtil.tryResolveClassByQName(type);
+          if (haxeClassInType != null) {
+            LogResolution(reference, "via parent type name.");
+            return asList(haxeClassInType.getComponentName());
+          }
+          //  check if module member
+          //  we might get a match on class with module name (default class), but the type we are looking for is not a child of default class
+          //  so we search the parent file for other classes
+          @NotNull PsiElement[] children = reference.getChildren();
+          if (children.length > 1) {
+            if (children[0] instanceof HaxeReference child) {
+              List<? extends PsiElement> resolve = resolve(child, false);
+              if (!resolve.isEmpty()) {
+                PsiFile containingFile = resolve.get(0).getContainingFile();
+                if (containingFile instanceof HaxeFile haxeFile) {
+                  HaxeClassModel model = haxeFile.getModel().getClassModel(children[1].getText());
+                  if (model != null) {
+                    HaxeComponentName componentName = model.haxeClass.getComponentName();
+                    if (componentName != null) {
+                      LogResolution(reference, "via module scan.");
+                      return List.of(componentName);
+                    }
+                  }
                 }
               }
             }
           }
-        }
       }
     }
     return null;
@@ -1459,6 +1649,8 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
    */
   @Nullable
   private List<? extends PsiElement> resolveChain(HaxeReference lefthandExpression, HaxeReference reference) {
+    ProgressIndicatorProvider.checkCanceled();
+
     // TODO: Merge with resolveByClassAndSymbol()??  It is very similar to this method.
     final HaxeReference leftReference = HaxeResolveUtil.getLeftReference(reference);
     if (leftReference != null) {
@@ -1486,6 +1678,7 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
     if (haxeClass != null && !result.isUnknown()) {
       // if type parameter, try to find constraints and use those ?
       haxeClass = useConstraintsIfTypeParameter(reference, haxeClass);
+      haxeClass = useDefaultIfTypeParameter(reference, haxeClass);
       HaxeClassModel classModel = haxeClass.getModel();
       HaxeBaseMemberModel member = classModel.getMember(identifier, classType.getGenericResolver());
       if (member != null) {
@@ -1572,8 +1765,10 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
 
   }
 
+
+
   private static HaxeClass useConstraintsIfTypeParameter(HaxeReference reference, HaxeClass haxeClass) {
-    if(haxeClass instanceof HaxeClassWrapperForTypeParameter typeParameter) {
+    if(haxeClass instanceof HaxeTypeParameterDeclaration typeParameter) {
       HaxeGenericResolver referenceResolver = HaxeGenericResolverUtil.generateResolverFromScopeParents(reference);
       ResultHolder resolved = referenceResolver.resolve(typeParameter);
       if (resolved != null && resolved.isClassType()) {
@@ -1582,6 +1777,18 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
           HaxeClass newClassValue = classReference.getHaxeClass();
           if(newClassValue != null) haxeClass = newClassValue;
         }
+      }
+    }
+    return haxeClass;
+  }
+  private HaxeClass useDefaultIfTypeParameter(HaxeReference reference, HaxeClass haxeClass) {
+    if(haxeClass instanceof HaxeGenericListPart genericPart) {
+      HaxeGenericParamModel model = genericPart.getModel();
+      ResultHolder defaultType = model.getDefaultType(null);
+      HaxeGenericResolver referenceResolver = HaxeGenericResolverUtil.generateResolverFromScopeParents(reference);
+      ResultHolder resolved = referenceResolver.resolve(defaultType);
+      if(resolved != null && resolved.getClassType() != null ) {
+        return resolved.getClassType().getHaxeClass();
       }
     }
     return haxeClass;
@@ -1710,21 +1917,23 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
       }
       // translate  type params from typedef left side to right side value
       HaxeGenericResolver genericResolver = new HaxeGenericResolver();
-      if(type.getTypeParam() != null ) {
+        HaxeTypeParam param = type.getTypeParam();
+        if(param != null ) {
         HaxeGenericResolver localResolver = specialization.toGenericResolver(type);
-        List<String> names = getGenericParamNames(nakedResult);
-        List<HaxeTypeListPart> typeParameterList = type.getTypeParam().getTypeList().getTypeListPartList();
+          List<HaxeTypeParameterDeclaration> typeparameters = getTypeParameters(nakedResult);
+          List<HaxeTypeListPart> typeParameterList = param.getTypeList();
         for (int i = 0; i < typeParameterList.size(); i++) {
-          if (names.size() -1 < i) break;
-          String name = names.get(i);
+          if (typeparameters.size() -1 < i) break;
+          HaxeTypeParameterDeclaration parameter = typeparameters.get(i);
           HaxeTypeListPart part = typeParameterList.get(i);
           if (part.getTypeOrAnonymous() != null) {
-            genericResolver.add(name, HaxeTypeResolver.getTypeFromTypeOrAnonymous(part.getTypeOrAnonymous(), localResolver));
+            ResultHolder holder = HaxeTypeResolver.getTypeFromTypeOrAnonymous(part.getTypeOrAnonymous(), localResolver);
+            genericResolver.add(parameter, holder);
           }
           else if (part.getFunctionType() != null) {
             //TODO resolve  with resolver ?
             ResultHolder type1 = HaxeTypeResolver.getTypeFromFunctionType(part.getFunctionType());
-            genericResolver.add(name, type1);
+            genericResolver.add(parameter, type1);
           }
         }
       }
@@ -1737,13 +1946,12 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
     return result;
   }
 
-  @NotNull
-  private static List<String> getGenericParamNames(HaxeResolveResult nakedResult) {
+  private static List<HaxeTypeParameterDeclaration> getTypeParameters(HaxeResolveResult nakedResult) {
     HaxeClass haxeClass = nakedResult.getHaxeClass();
     if (haxeClass == null) return  List.of();
     HaxeGenericParam param = haxeClass.getGenericParam();
     if (param == null) return  List.of();
-    return  param.getGenericListPartList().stream().map(genericListPart -> genericListPart.getComponentName().getName()).toList();
+    return  param.getGenericListPartList().stream().map(HaxeTypeParameterDeclaration.class::cast).toList();
   }
 
   private static List<? extends PsiElement> asList(@Nullable PsiElement element) {
@@ -1760,24 +1968,30 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
   }
 
   private static List<? extends PsiElement> resolveBySuperClassAndSymbol(@Nullable HaxeClass leftClass,
-                                                                         @NotNull HaxeReference reference) {
+                                                                         @NotNull HaxeReference reference,
+                                                                         boolean useUnderlyingForAbstract
+  ) {
     HaxeGenericResolver baseResolver = getGenericResolver(leftClass, reference);
-    return resolveBySuperClassAndSymbol(leftClass, baseResolver, reference);
+    return resolveBySuperClassAndSymbol(leftClass, baseResolver, reference, useUnderlyingForAbstract);
   }
 
 
   private static List<? extends PsiElement> resolveBySuperClassAndSymbol(@Nullable HaxeClass leftClass,
                                                                          @Nullable HaxeGenericResolver resolver,
-                                                                         @NotNull HaxeReference reference) {
+                                                                         @NotNull HaxeReference reference,
+                                                                         boolean useUnderlyingForAbstract) {
     if (null == leftClass) {
       return EMPTY_LIST;
     }
 
     if (leftClass instanceof HaxeAbstractTypeDeclaration) {
-
-      HaxeClassModel classModel = leftClass.getModel();
-      HaxeAbstractClassModel abstractClassModel = (HaxeAbstractClassModel)classModel;
-      return resolveByClassAndSymbol(abstractClassModel.getUnderlyingClass(resolver), resolver, reference);
+      if (useUnderlyingForAbstract) {
+        HaxeClassModel classModel = leftClass.getModel();
+        HaxeAbstractClassModel abstractClassModel = (HaxeAbstractClassModel) classModel;
+        return resolveByClassAndSymbol(abstractClassModel.getUnderlyingClass(resolver), resolver, reference);
+      }else {
+        return resolveByClassAndSymbol(leftClass, resolver, reference);
+      }
     }
     else {
 
@@ -1889,6 +2103,10 @@ public class HaxeResolver implements ResolveCache.AbstractResolver<HaxeReference
     public boolean execute(@NotNull PsiElement element, ResolveState state) {
       //TODO: should probably make a better solution for this using a HaxeComponentName
       if (element.getParent() instanceof HaxeEnumObjectLiteralElement) {
+        // avoids adding target to list
+        if (element == target) return true;
+        // do not resolve a reference to elements later in the code
+        if(element.getTextOffset() > target.getTextOffset())  return true;
         if (element.textMatches(name)) {
           result.add(element);
           return false;

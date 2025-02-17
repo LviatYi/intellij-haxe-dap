@@ -33,6 +33,8 @@ import com.intellij.plugins.haxe.model.HaxeFileModel;
 import com.intellij.plugins.haxe.util.HaxeElementGenerator;
 import com.intellij.plugins.haxe.util.HaxeResolveUtil;
 import com.intellij.psi.*;
+import com.intellij.psi.util.CachedValueProvider;
+import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NonNls;
@@ -138,8 +140,25 @@ public class HaxeFile extends PsiFileBase
   }
 
   public List<HaxeImportStatement> getImportStatements() {
-    HaxeImportStatement[] result = PsiTreeUtil.getChildrenOfType(this, HaxeImportStatement.class);
-    return result == null ? Collections.emptyList() : new ArrayList<>(Arrays.asList(result));
+    return new ArrayList<>(getImportStatementsCached(this));
+  }
+  public List<HaxeUsingStatement> getUsingStatements() {
+    return new ArrayList<>(getUsingStatementsCached(this));
+  }
+
+  private static @NotNull List<HaxeImportStatement> getImportStatementsCached(HaxeFile haxeFile) {
+    return CachedValuesManager.getCachedValue(haxeFile, () -> {
+      HaxeImportStatement[] result = PsiTreeUtil.getChildrenOfType(haxeFile, HaxeImportStatement.class);
+      List<HaxeImportStatement> importStatements = result == null ? Collections.emptyList() : new ArrayList<>(Arrays.asList(result));
+      return new CachedValueProvider.Result<>(importStatements, haxeFile);
+    });
+  }
+  private static @NotNull List<HaxeUsingStatement> getUsingStatementsCached(HaxeFile haxeFile) {
+    return CachedValuesManager.getCachedValue(haxeFile, () -> {
+      HaxeUsingStatement[] result = PsiTreeUtil.getChildrenOfType(haxeFile, HaxeUsingStatement.class);
+      List<HaxeUsingStatement> importStatements = result == null ? Collections.emptyList() : new ArrayList<>(Arrays.asList(result));
+      return new CachedValueProvider.Result<>(importStatements, haxeFile);
+    });
   }
 
   public HaxeFileModel getModel() {

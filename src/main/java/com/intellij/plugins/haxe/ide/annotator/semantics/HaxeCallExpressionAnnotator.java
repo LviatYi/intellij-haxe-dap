@@ -5,26 +5,36 @@ import com.intellij.lang.annotation.Annotator;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.model.FullyQualifiedInfo;
+import com.intellij.plugins.haxe.model.HaxeAbstractClassModel;
+import com.intellij.plugins.haxe.model.HaxeClassModel;
+import com.intellij.plugins.haxe.model.evaluator.callexpression.EvaluationAnnotationData;
+import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionContext;
+import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionEvaluation;
+import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionUtil;
 import com.intellij.plugins.haxe.model.type.*;
 import com.intellij.psi.PsiElement;
 import org.jetbrains.annotations.NotNull;
 
 
-import static com.intellij.plugins.haxe.ide.annotator.semantics.HaxeCallExpressionUtil.*;
+import java.util.ArrayList;
+import java.util.List;
+
+import static com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionUtil.tryGetCallieType;
+
 
 public class HaxeCallExpressionAnnotator implements Annotator {
   @Override
   public void annotate(@NotNull PsiElement element, @NotNull AnnotationHolder holder) {
-    if (element instanceof HaxeCallExpression expression) {
-      if (expression.getExpression() instanceof HaxeReference reference) {
+    if (element instanceof HaxeCallExpression callExpression) {
+      if (callExpression.getExpression() instanceof HaxeReference reference) {
         final PsiElement resolved = reference.resolve();
         if (resolved instanceof HaxePsiField  || resolved instanceof HaxeParameter ) {
           HaxeNamedComponent component = (HaxeNamedComponent)resolved;
           HaxeGenericResolver resolver = HaxeGenericResolverUtil.generateResolverFromScopeParents(reference);
 
-          ResultHolder callieType = tryGetCallieType(expression);
-          if (!callieType.isUnknown() && callieType.getClassType() != null) {
-            resolver.addAll(callieType.getClassType().getGenericResolver());
+          SpecificHaxeClassReference callieType = tryGetCallieType(callExpression);
+          if (!callieType.isUnknown()) {
+            resolver.addAll(callieType.getGenericResolver());
           }
 
 
@@ -39,20 +49,45 @@ public class HaxeCallExpressionAnnotator implements Annotator {
           if (typeReference  instanceof  SpecificFunctionReference functionType) {
             // function type or function literal
             if ( functionType.method == null) {
-              CallExpressionValidation validation = checkFunctionCall(expression, functionType);
+              HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForFunctionCall(callExpression, functionType);
+              HaxeCallExpressionEvaluation validation = context.evaluateWithAnnotationData(callExpression);
               createAnnotations(holder, validation);
             } else {
-              CallExpressionValidation validation = checkMethodCall(expression, functionType.method.getMethod());
+              HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForMethodCall(callExpression, functionType.method.getMethod());
+              HaxeCallExpressionEvaluation validation = context.evaluateWithAnnotationData(callExpression);
               createAnnotations(holder, validation);
             }
           } else if (typeReference instanceof SpecificHaxeClassReference classReference) {
-            if (classReference.getHaxeClassModel() != null) {
-              if (classReference.getHaxeClassModel().isCallable()) return;
+            HaxeClassModel haxeClassModel = classReference.getHaxeClassModel();
+            if (haxeClassModel != null) {
+              if (haxeClassModel.isCallable()) return;
+            }
+            if(haxeClassModel instanceof HaxeAbstractClassModel abstractModel) {
+              // abstracts can be casted to functionTypes so we need to check for function types that matches our callExpressions
+              List<SpecificTypeReference> castToTypes = new ArrayList<>();
+              castToTypes.addAll(abstractModel.getExplicitCastToTypes(classReference.getGenericResolver()));
+              castToTypes.addAll(abstractModel.getImplicitCastToTypes(classReference, classReference.getGenericResolver()));
+              List<SpecificFunctionReference> functionTypes = castToTypes.stream()
+                      .filter(SpecificFunctionReference.class::isInstance)
+                      .map(SpecificFunctionReference.class::cast)
+                      .toList();
+
+              HaxeCallExpressionEvaluation validation = null;
+              for (SpecificFunctionReference functionType : functionTypes) {
+                HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForFunctionCall(callExpression, functionType);
+                validation = context.evaluateWithAnnotationData(callExpression);
+                if(validation.isValid()) return;
+              }
+
+              if(validation != null) {
+                createAnnotations(holder, validation);
+                return;
+              }
             }
             // if not enum value constructor, expr, dynamic or unknown, show error
             if (!type.isEnumValueType() && !type.isDynamic() && !type.isUnknown() && !type.getType().isExpr()) {
               // TODO bundle
-              holder.newAnnotation(HighlightSeverity.ERROR, typeReference.toPresentationString() + " is not a callable type")
+              holder.newAnnotation(HighlightSeverity.ERROR, typeReference.toPresentationString(true) + " is not a callable type")
                 .range(element)
                 .create();
             }
@@ -60,20 +95,26 @@ public class HaxeCallExpressionAnnotator implements Annotator {
         }
         else if (resolved instanceof HaxeMethod method) {
           if (isTrace(method))return;
-          CallExpressionValidation validation = checkMethodCall(expression, method);
+          HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForMethodCall(callExpression, method);
+          HaxeCallExpressionEvaluation validation = context.evaluateWithAnnotationData(callExpression);
           createAnnotations(holder, validation);
         }
       }
     }
     if (element instanceof HaxeNewExpression newExpression) {
-      CallExpressionValidation validation = checkConstructor(newExpression);
-      createAnnotations(holder, validation);
+      HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForConstructorCall(newExpression);
+      if (context != null) {
+        HaxeCallExpressionEvaluation validation = context.evaluateWithAnnotationData(newExpression);
+        createAnnotations(holder, validation);
+      }
     }
   }
 
-  private void createAnnotations(@NotNull AnnotationHolder holder, CallExpressionValidation validation) {
-    if (!validation.errors.isEmpty())createErrorAnnotations(validation, holder);
-    if (!validation.warnings.isEmpty())createWarningAnnotations(validation, holder);
+  private void createAnnotations(@NotNull AnnotationHolder holder, HaxeCallExpressionEvaluation validation) {
+    List<EvaluationAnnotationData> errors = validation.getErrors();
+    List<EvaluationAnnotationData> warnings = validation.getWarnings();
+    if (!errors.isEmpty())createErrorAnnotations(errors, holder);
+    if (!warnings.isEmpty())createWarningAnnotations(warnings, holder);
   }
 
   // the trace method in std does not have rest arg so we ignore it
@@ -85,13 +126,13 @@ public class HaxeCallExpressionAnnotator implements Annotator {
            && info.memberName.equals("trace");
   }
 
-  private void createErrorAnnotations(@NotNull CallExpressionValidation validation, @NotNull AnnotationHolder holder) {
-    validation.errors.forEach(record -> holder.newAnnotation(HighlightSeverity.ERROR, record.message())
+  private void createErrorAnnotations(List<EvaluationAnnotationData> annotationData, @NotNull AnnotationHolder holder) {
+    annotationData.forEach(record -> holder.newAnnotation(HighlightSeverity.ERROR, record.message())
       .range(record.range())
       .create());
   }
-  private void createWarningAnnotations(@NotNull CallExpressionValidation validation, @NotNull AnnotationHolder holder) {
-    validation.warnings.forEach(record -> holder.newAnnotation(HighlightSeverity.WEAK_WARNING, record.message())
+  private void createWarningAnnotations(List<EvaluationAnnotationData> annotationData, @NotNull AnnotationHolder holder) {
+    annotationData.forEach(record -> holder.newAnnotation(HighlightSeverity.WEAK_WARNING, record.message())
       .range(record.range())
       .create());
   }

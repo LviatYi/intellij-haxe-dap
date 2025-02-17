@@ -39,6 +39,7 @@
       oMINUS_ASSIGN="-="
       oMINUS="-"
 
+      oQUEST_QUEST_ASSIGN="??="
       oQUEST_QUEST="??"
       oQUEST="?"
 
@@ -198,7 +199,7 @@ private metaKeyWord ::= embeddedMeta | '@'
  * after shiftRight so that it has priority.
  */
 fake operator ::= ":" | ";" | "," |"." | "==" | "=" | "!=" | "!" | "~" | "++" | "+=" | "+" | "--" | "-="
-              | "-" | "?" | "||" | "|" | "|=" | "&&" | "&=" | "&" | "<<=" | "<<" | "<=" | "<" | "^="
+              | "-" | "??=" | "??" | '?' | "||" | "|" | "|=" | "&&" | "&=" | "&" | "<<=" | "<<" | "<=" | "<" | "^="
               | "^" | "*=" | "*" | "/=" | "/" | "%=" | "%"
               | <<unsignedShiftRightAssign>> | <<shiftRightAssign>> | <<unsignedShiftRight>> | <<shiftRight>>
               | <<gtEq>> | ">" | "..." | "in" | '->' | "=>" | "new" | "is"
@@ -215,7 +216,7 @@ shiftOperator ::= unsignedShiftRightOperator | shiftRightOperator | shiftLeftOpe
 shiftAssignOperator ::= unsignedShiftRightAssignOperator | shiftRightAssignOperator | shiftLeftAssignOperator
 
 // TODO: Rename *.operation rules to *.operator.
-assignOperation ::= '=' | '%=' | '*=' | '/=' | '+=' | '-=' | '&=' | '|=' | '^=' | shiftAssignOperator  { extends=operator }
+assignOperation ::= '=' | '%=' | '*=' | '/=' | '+=' | '-=' | '&=' | '|=' | '^=' | shiftAssignOperator | coalescingAssignOperator  { extends=operator }
 private gt ::= '>' !'>' // Cheaper than the predicates for all of the possible shift operators.
 compareOperation ::= '==' | '!=' | '<=' | '<' | <<gtEq>> | gt     { extends=operator }
 bitOperation ::= '|' | '&' | '^'      { extends=operator }
@@ -232,6 +233,7 @@ moduloOperator ::= '%'                { extends=operator }
 multiplicativeOperator ::= '*' | '/'  { extends=operator }
 prefixOperator ::= '-' | '!' | '~'    { extends=operator }
 coalescingOperator ::= '??'           { extends=operator }
+coalescingAssignOperator ::= '??='    { extends=operator }
 questionOperator ::= <<ternary>>      { extends=operator }
 suffixOperator ::= '!'                { extends=operator }
 
@@ -263,7 +265,7 @@ private topLevelList ::= topLevel*
 module ::= moduleBody
 private topLevel ::= importStatement | usingStatement |  module {recoverWhile="top_level_recover" name="import, using, or top level declaration"}
 //private topLevel ::= importStatement | usingStatement |  (embeddedMeta* topLevelDeclaration) | moduleDeclaration {recoverWhile="top_level_recover" name="import, using, or top level declaration"}
-private top_level_recover ::= !(ppToken | '@' | 'abstract' | 'class'  | 'enum' | 'extern' | 'import' | 'using' | 'interface' | 'private' | 'typedef' | 'final' | 'var'| 'inline')
+private top_level_recover ::= !(ppToken | '@' | 'abstract' | 'class'  | 'enum' | 'extern' | 'import' | 'using' | 'interface' | 'private' | 'public' | 'typedef' | 'final' | 'var'| 'inline' | 'function')
 
 // These are top-level parsing entry points for metadata.
 compiletimeMetaArg ::= expression
@@ -320,6 +322,7 @@ inlineKeyWord ::= 'inline'
 externKeyWord ::= 'extern'
 finalKeyWord ::= 'final'
 untypedKeyword ::= 'untyped'
+macroKeyword ::= 'macro'
 
 private externPrivate ::= externKeyWord privateKeyWord
 private privateExtern ::= privateKeyWord externKeyWord
@@ -354,7 +357,7 @@ externInterfaceDeclaration ::= externAndMaybePrivate? 'interface' componentName 
 //see moduleOrTopLevelDeclaration
 //moduleDeclaration ::= moduleBody{pin=1}
 
-moduleMemberModifier::= privateKeyWord | inlineKeyWord
+moduleMemberModifier::= privateKeyWord | inlineKeyWord | macroKeyword
 
 private moduleBody ::= embeddedMeta* moduleBodyPart+  {pin=2}
 private moduleBodyPart ::=  topLevelDeclaration |  moduleFieldDeclaration |  moduleMethodDeclaration  {recoverWhile="class_body_part_recover"}
@@ -434,11 +437,11 @@ fieldDeclaration ::= fieldModifier* mutabilityModifier componentName propertyDec
 optionalFieldDeclaration ::= fieldModifier* mutabilityModifier optionalMark componentName propertyDeclaration? typeTag? varInit? <<semicolonUnlessPrecededByStatement>>
 {pin=3 implements=fieldDeclaration mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxePsiFieldImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxePsiField"}
 //NOTE: static local variable is a haxe 4.3+ feature
-localVarDeclarationList ::='static'? mutabilityModifier localVarDeclaration (',' localVarDeclaration)* <<semicolonUnlessPrecededByStatement>>{pin=3}
+localVarDeclarationList ::='static'? mutabilityModifier localVarDeclaration (',' localVarDeclaration)* <<semicolonUnlessPrecededByStatement>>{pin=2} // TODO make recovery
 localVarDeclaration ::= 'static'? componentName typeTag? varInit?
   {recoverWhile="local_var_declaration_part_recover" mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxePsiFieldImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxePsiField"}
 private localVarDeclarationWithInit ::= componentName typeTag? varInit {extends=localVarDeclaration}
-private local_var_declaration_part_recover ::= !(!<<isSemicolonRuleEnabled>> | '!' | ppToken | '(' | ')' | '++' | ',' | '-' | '--' | ';' | '[' | 'break' | 'case' | 'cast' | 'continue' | 'default' | 'do' | 'else' | 'false' | 'final' | 'for' | 'function' | 'if' | 'new' | 'null' | 'return' | 'super' | 'switch' | 'this' | 'throw' | 'true' | 'try' | 'untyped' | 'var' | 'while' | '{' | '}' | '~' | ID | OPEN_QUOTE | LITFLOAT | LITHEX | LITINT | LITOCT | REG_EXP)
+private local_var_declaration_part_recover ::= !(!<<isSemicolonRuleEnabled>> | '!' | ppToken | '(' | ')' | '++' | ',' | '-' | '--' | ';' | '[' | 'break' | 'case' | 'cast' | 'continue' | 'default' | 'do' | 'else' | 'false' | 'final' | 'for' | 'function' | 'if' | 'new' | 'null' | 'return' | 'super' | 'switch' | 'this' | 'throw' | 'true' | 'try' | 'untyped' | 'var' | 'while' | '{' | '}' | '~' | ID | MACRO_ID | OPEN_QUOTE | LITFLOAT | LITHEX | LITINT | LITOCT | REG_EXP)
 
 propertyDeclaration ::= '(' propertyAccessor ',' propertyAccessor ')'
 
@@ -493,7 +496,7 @@ private arrowFunctionDeclaration ::=  arrowFunctionParameterList '->' lambdaBody
  *
  */
 
-varInit ::= '=' expression {pin=1}
+varInit ::= (!';') '=' expression {pin=2}
 parameter ::= optionalMark? componentName typeTag? varInit?
 {mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeParameterPsiMixinImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxeParameterPsiMixin"}
 restParameter ::= ('...'componentName typeTag?)
@@ -555,19 +558,39 @@ oldFunctionTypeArgument ::=   (optionalMark? ('(' functionType ')' |  ('(' typeO
  */
 
 typeTag ::= ':' typeWrapper
-typeParam ::= '<' typeList '>'  {mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeTypeParamPsiMixinImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxeTypeParamPsiMixin"}
-typeList ::= typeListPart (',' typeListPart)*
-haxe4typeList ::= typeListPart ('&' typeListPart)+
-{extends=typeList}
+typeParam ::= '<' typeList '>'
+{
+methods=[typeList="typeListPart"]
+mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeTypeParamPsiMixinImpl"
+implements="com.intellij.plugins.haxe.lang.psi.HaxeTypeParamPsiMixin"
+}
+private typeList ::= typeListPart (',' typeListPart)*
+private haxe4typeList ::= typeListPart ('&' typeListPart)+ {extends=typeList}
 
-//TODO mlo:  separate "type-generics" and "method-generics" as they have different rules
-//typeGenericParam ::= '<' defaultGenericListPart (',' defaultGenericListPart)* '>'
-//methodGenericParam ::= '<' genericListPart (',' genericListPart)* '>'
+
 genericParam ::= '<' genericListPart (',' genericListPart)* '>'
 genericListPart ::= normalGenericListPart  | constGenericListPart
-{mixin="com.intellij.plugins.haxe.lang.psi.impl.AbstractHaxeNamedComponent" implements="com.intellij.plugins.haxe.lang.psi.HaxeComponent"}
+{
+  implements="com.intellij.plugins.haxe.lang.psi.impl.HaxeTypeParameterDeclaration"
+  mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeTypeParameterDeclarationPsiMixinImpl"
+}
+
 genericDefaultType ::= typeWrapper
-genericConstraintPart ::=  ('(' (haxe4typeList | typeList) ')' | haxe4typeList | typeListPart )
+constraintTypeList ::= ('(' (haxe4typeList | typeList) ')' | haxe4typeList )
+{
+    methods=[constraintTypes="typeListPart"]
+    mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeConstraintTypeListImplMixin"
+    implements="com.intellij.plugins.haxe.lang.psi.HaxeClass"
+}
+
+//NOTE: We must accept "expression" here because  "@:const" in type parameters allow constants like integers and string.
+// https://haxe.org/manual/cr-metadata.html
+// @:const -> Allows a type parameter to accept expression values.
+
+private genericConstraintType ::=  constraintTypeList |  typeOrAnonymous !'->' | functionType | expression
+genericConstraintPart ::= genericConstraintType {methods=[constExpression="expression"]}
+
+
 private normalGenericListPart ::= componentName (':' genericConstraintPart)? ('=' genericDefaultType)?
 // constGenericListPart is only available when the macroMember is '@:const' (constMeta).  It's only useful in macros.
 // We can't use constMeta here until the lexer returns a string for macros instead of META_ID.
@@ -628,7 +651,7 @@ macroValueExpression ::= 'macro' <<pushStateMapInitializerOrMacro>> <<pushSemico
 private macroValue ::=   statement | macroTopLevelDeclaration
 
 private statement ::= blockStatement | notBlockStatement
-{mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeStatementPsiMixinImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxeStatementPsiMixin"}
+{ mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeStatementPsiMixinImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxeStatementPsiMixin"}
 
 untypedStatement ::=  'untyped'  statement ';'?
 {pin=2 mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeStatementPsiMixinImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxeStatementPsiMixin"}
@@ -655,6 +678,7 @@ private notBlockStatement ::=
                             | tryStatement
                             | (<<isInMapInitOrMacroState>> !<<isInMapInitExpressionState>> mapInitializerExpressionList )
                             | (expression !fatArrowOperator)
+
 
 
 forStatement ::= 'for' '(' iterableDeclaration ')' statement ';'?
@@ -729,7 +753,7 @@ enumExtractedValueReference ::= (<<startWithLowercaseOrUnderscoreCheck>> compone
 enumExtractedValue::= enumExtractedValueReference | primitiveExtractedValue
 
 
-private primitiveExtractedValue  ::= enumExtractObjectLiteral | enumExtractArrayLiteral
+private primitiveExtractedValue  ::= enumExtractObjectLiteral | enumExtractArrayLiteral {recoverWhile=expression_recover}
 private expressionOrExtractorMatchExpression ::=  switchExtractorExpression | enumExtractArrayLiteral | enumExtractObjectLiteral  | expression   {extends=expression}
 enumObjectLiteralElement ::= objectLiteralComponentName ':' ( expressionOrExtractorMatchExpression)
 {
@@ -752,8 +776,8 @@ enumArgumentExtractor ::= enumValueReference '(' 'var'? enumExtractorArgumentLis
  {extends="expression" mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeEnumArgumentExtractorMixinImpl" implements="com.intellij.plugins.haxe.model.HaxeModelTarget"}
 
 variableCaptureExpression ::= callOrArrayAccess ('=>' switchCaseExpr)+  {pin=2 extends="expression"}
-
-switchCaseCapture ::= <<startWithLowercaseOrUnderscoreCheck>> componentName (("=" extractorMatchExpressionVariant  ) | varInit)
+private switchCaseCaptureInit ::=  '=' (primitiveExtractedValue | expression) {extends = varInit }
+switchCaseCapture ::= <<startWithLowercaseOrUnderscoreCheck>> componentName (("=" extractorMatchExpressionVariant  ) | switchCaseCaptureInit)
 {mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxePsiFieldImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxePsiField"}
 
 // This rule is superseded by localVarDeclarationList (in one of its degenerate configurations), as part of expression.
@@ -791,12 +815,12 @@ callExpressionList ::= forStatement | whileStatement | spreadExpression | (expre
 {recoverWhile="expression_list_recover" extends=expressionList  methods= [spreadExpression="spreadExpression[0]"]}
 
 expressionList ::= forStatement | whileStatement | (expression (',' expression)*)  ','? {recoverWhile="expression_list_recover"}
-//recoverycomments:
+//recovery comments:
 // fatArrowOperator("=>") is here to avoid problems where enum extractors are mis-parsed as callExpressions
 // '(' is here to prevent call expressions from consuming enum extractor expressions
 private expression_list_recover ::= !(')' | ']' |'('| fatArrowOperator)
 
-private expression_recover ::= !('!' | '!=' | '%' | '%=' | '&&' | '&' | '&=' | '(' | ')' | '*' | '*=' | '+' | '++' | '+=' | ',' | '-' | '--' | '-=' | '.' | '...' | '/' | '/=' | ':' | ';' | '<' | '<<' | '<<=' | '<=' | '=' | '==' | '>' | <<shiftRight>> | <<unsignedShiftRight>> | <<gtEq>> | <<shiftRightAssign>> | <<unsignedShiftRightAssign>> | '?' | '[' | ']' | '^' | '^=' | 'break' | 'case' | 'cast' | 'catch' | 'continue' | 'default' | 'do' | 'dynamic' | 'else' | 'extern' | 'false' | 'final' | 'for' | 'function' | 'if' | 'inline' | 'new' | 'null' | 'override' | 'private' | 'public' | 'return' | 'static' | 'super' | 'switch' | 'this' | 'throw' | 'true' | 'try' | 'untyped' | 'var' | 'while' | 'in' |'{' | '|' | '|=' | '||' | '}' | '~' | ID | LITFLOAT | LITHEX | LITINT | LITOCT | OPEN_QUOTE | CLOSING_QUOTE | META_ID | REG_EXP | LONG_TEMPLATE_ENTRY_END | '=>'| '$') !metaKeyWord
+private expression_recover ::= !('!' | '!=' | '%' | '%=' | '&&' | '&' | '&=' | '(' | ')' | '*' | '*=' | '+' | '++' | '+=' | ',' | '-' | '--' | '-=' | '.' | '...' | '/' | '/=' | ':' | ';' | '<' | '<<' | '<<=' | '<=' | '=' | '==' | '>' | <<shiftRight>> | <<unsignedShiftRight>> | <<gtEq>> | <<shiftRightAssign>> | <<unsignedShiftRightAssign>> | '?' | '[' | ']' | '^' | '^=' | 'break' | 'case' | 'cast' | 'catch' | 'continue' | 'default' | 'do' | 'dynamic' | 'else' | 'extern' | 'false' | 'final' | 'for' | 'function' | 'if' | 'inline' | 'new' | 'null' | 'override' | 'private' | 'public' | 'return' | 'static' | 'super' | 'switch' | 'this' | 'throw' | 'true' | 'try' | 'untyped' | 'var' | 'while' | 'in' |'{' | '|' | '|=' | '||' | '}' | '~' | ID | MACRO_ID | LITFLOAT | LITHEX | LITINT | LITOCT | OPEN_QUOTE | CLOSING_QUOTE | META_ID | REG_EXP | LONG_TEMPLATE_ENTRY_END | '=>'| '$') !metaKeyWord
 
 // This list is in reversed operator precedence order -- lowest on top.
 // The things on top are still matched first.
@@ -863,22 +887,28 @@ private assignableValueExpression ::= (referenceExpression | thisExpression | su
 // In particular, callFunctionLiteral must come before (literalExpression qualifiedReferenceTail?).
 // If callOrArrayAccess comes before literalExpression, then referenceExpression (as part of callOrArrayAccess)
 // will take the first identifier and the rest will not match properly.
+//
+// comment: *mlo*
+// trying to check expressions that starts with keywords (that are not part of reference expressions) first as
+// missing keyword is fast to check so any miss has low cost and any hit might save us from more complex evaluations
 private value ::= ('untyped' expression)
                 | macroTypeReification
                 | macroValueExpression
+                // starts with keywords
+                | newExpressionOrCall
+                | ifStatement
+                | tryStatement
+                | switchStatement
+                | throwStatement
+                | (castExpression qualifiedReferenceTail?)
+                //
                 | callFunctionLiteral
                 | immediateArrayAccess
                 | (macroExpressionReification (qualifiedReferenceTail | CallArrayOrReferenceExpression)?)
                 | (literalExpression qualifiedReferenceTail?)
                 | objectLiteral
                 | callOrArrayAccess
-                | ifStatement
-                | (castExpression qualifiedReferenceTail?)
-                | newExpressionOrCall
                 | parenthesizedExpressionOrCall  // Seems redundant with callOrArrayAccess
-                | tryStatement
-                | switchStatement
-                | throwStatement
                 | localVarDeclarationWithInit
                 | referenceExpression
                 | thisExpression
@@ -961,7 +991,11 @@ componentName ::= identifier
 //newExpression ::= 'new' type newCallExpression
 private newExpressionArgumentsList ::= '(' [!')' (spreadExpression | (expression (',' expression)* (',' spreadExpression)?))] ')' {pin(".*")=1}
 newExpression ::= 'inline'? 'new' type newExpressionArgumentsList
-{pin=2 recoverWhile="expression_recover" mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeReferenceImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxeReference"}
+{
+    pin=3 recoverWhile="expression_recover"
+    mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeReferenceImpl"
+    implements="com.intellij.plugins.haxe.lang.psi.HaxeReference"
+}
 
 castExpression ::= 'cast' (('(' expression ',' typeWrapper ')')  | expression)
 {mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeClassReferenceImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxeReference"}

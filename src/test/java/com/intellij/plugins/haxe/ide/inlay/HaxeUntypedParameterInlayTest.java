@@ -30,6 +30,14 @@ public class HaxeUntypedParameterInlayTest extends HaxeInlayTestBase {
   public void testUntypedWithGenerics() throws Exception {
     doTest(hintsProvider);
   }
+  @Test
+  public void testDynamicMethodAssignInlay() throws Exception {
+    doTest(hintsProvider);
+  }
+  @Test
+  public void testUntypedWithRecursiveConstraintGenerics() throws Exception {
+    doTest(hintsProvider);
+  }
 
 
 }

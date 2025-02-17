@@ -29,7 +29,6 @@ import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypes;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.model.*;
 import com.intellij.plugins.haxe.model.type.ResultHolder;
-import com.intellij.plugins.haxe.model.type.SpecificTypeReference;
 import com.intellij.plugins.haxe.util.HaxeDebugUtil;
 import com.intellij.plugins.haxe.util.HaxePresentableUtil;
 import com.intellij.plugins.haxe.util.HaxeResolveUtil;
@@ -67,26 +66,15 @@ abstract public class AbstractHaxeNamedComponent extends HaxePsiCompositeElement
   @Nullable
   @NonNls
   public String getName() {
-    return CachedValuesManager.getProjectPsiDependentCache(this, AbstractHaxeNamedComponent::_getName);
+    return getCachedName(this);
   }
 
-  private static String _getName(AbstractHaxeNamedComponent namedComponent) {
-      final HaxeComponentName name = namedComponent.getComponentName();
-      if (name != null) {
-        return name.getText();
-      } else {
-        return namedComponent._getNameFromSuper();
-      }
-  }
-  private String _getNameFromSuper() {
-    return super.getName();
+  private static String getCachedName(AbstractHaxeNamedComponent namedComponent) {
+    HaxeComponentName componentName = CachedValuesManager.getCachedValue(namedComponent, () -> new CachedValueProvider.Result<>(namedComponent.getComponentName(), namedComponent));
+    if(componentName == null) return null;
+    return CachedValuesManager.getCachedValue(componentName, () -> new CachedValueProvider.Result<>(componentName.getText(),  componentName));
   }
 
-
-  @Override
-  public String getText() {
-    return super.getText();
-  }
 
   @Override
   public PsiElement setName(@NonNls @NotNull String name) throws IncorrectOperationException {
@@ -145,7 +133,7 @@ abstract public class AbstractHaxeNamedComponent extends HaxePsiCompositeElement
             ResultHolder type = objectLiteralMemberModel.getResultType(null);
             if(type != null && !type.isUnknown()) {
               result.append(':');
-              result.append(type.getType().withoutConstantValue().toPresentationString());
+              result.append(type.getType().withoutConstantValue().toPresentationString(false));
             }
           }
         }
@@ -269,6 +257,18 @@ abstract public class AbstractHaxeNamedComponent extends HaxePsiCompositeElement
   public boolean isInline() {
     final HaxePsiModifier[] declarationAttributeList = PsiTreeUtil.getChildrenOfType(this, HaxePsiModifier.class);
     return HaxeResolveUtil.getDeclarationTypes(declarationAttributeList).contains(HaxeTokenTypes.KINLINE);
+  }
+
+  @Override
+  public String filterName() {
+    if (this instanceof HaxeClass haxeClass) {
+      return haxeClass.getQualifiedName();
+    }
+    HaxeClass haxeClass = PsiTreeUtil.getParentOfType(this, HaxeClass.class);
+    if(haxeClass != null) {
+      return haxeClass.getQualifiedName() + this.getText();
+    }
+    return getContainingFile().getName() + this.getText();
   }
 
   @Nullable

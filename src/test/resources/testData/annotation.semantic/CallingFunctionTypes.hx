@@ -1,7 +1,16 @@
 package ;
 
+typedef TypedefVoidFn = Void -> Void;
+
 class Test {
     function new(){
+
+        var voidFn:Void -> Void = function (){};
+        voidFn(); // correct: void "argument" in signature is ignored
+        voidFn(<error descr="Too many arguments (expected 0 but got 1)\"">1</error>); // Wrong: (no argument expected)
+
+        var typeDefVoid:TypedefVoidFn = voidFn;
+        typeDefVoid();
 
         var withTypeTag:Int -> String = testA;
         var withoutTypeTag = testA;
@@ -25,13 +34,14 @@ class Test {
 
         var genericsFromTypeTag:String->String = testB; // correct : generics are set based on type in typetag
 
-        var wrongTypeTagB:<warning descr="Unresolved symbol">T</warning>-><warning descr="Unresolved symbol">T</warning> = testB; // Wrong : generic Types not available?
-
         var withoutTypeTagGeneric = testB;
         var genericResult = withoutTypeTagGeneric("");
 
         genericResult.toLowerCase(); // correct
         withoutTypeTagGeneric("").toLowerCase(); // correct
+
+        // type tag from method generics not possible, should fail
+        var <error descr="Incompatible type: T->T should be T->T">wrongTypeTag:<warning descr="Unresolved symbol">T</warning>-><warning descr="Unresolved symbol">T</warning> = testB</error>; // Wrong
 
     }
 

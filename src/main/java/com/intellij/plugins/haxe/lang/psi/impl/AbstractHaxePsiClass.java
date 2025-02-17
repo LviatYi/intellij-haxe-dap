@@ -33,8 +33,8 @@ import com.intellij.plugins.haxe.metadata.psi.HaxeMeta;
 import com.intellij.plugins.haxe.model.*;
 import com.intellij.plugins.haxe.model.type.HaxeGenericResolver;
 
-import com.intellij.plugins.haxe.model.type.SpecificHaxeClassReference;
 import com.intellij.plugins.haxe.util.HaxeResolveUtil;
+import com.intellij.plugins.haxe.util.HaxeNamedSubComponentUtil;
 import com.intellij.plugins.haxe.util.UsefulPsiTreeUtil;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.InheritanceImplUtil;
@@ -114,16 +114,20 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
   @NotNull
   public HaxeClassModel getModel() {
     if (_model == null) {
-      if (this instanceof HaxeTypeParameterMultiType multiType) {
-        _model = new HaxeTypeParameterMultiTypeModel(multiType);
-      }else if (this instanceof HaxeAnonymousType anonymousType) {
+      // note HaxeGenericConstraintPartImpl implements anonymous interface so it must be first
+      // this is a temp workaround until the class hierarchy and abstractClass can be replaced with more flexible interfaces
+      if (this instanceof HaxeConstraintTypeListImpl constraintTypeList) {
+        _model = new HaxeConstraintTypeListModel(constraintTypeList);
+      } else if (this instanceof HaxeAnonymousType anonymousType) {
         _model = new HaxeAnonymousTypeModel(anonymousType);
-      }else if (this instanceof HaxeEnumDeclaration enumDeclaration) {
+      } else if (this instanceof HaxeEnumDeclaration enumDeclaration) {
         _model = new HaxeEnumModelImpl(enumDeclaration);
       } else if (this instanceof HaxeExternClassDeclaration externClassDeclaration) {
         _model = new HaxeExternClassModel(externClassDeclaration);
       } else if (this instanceof HaxeObjectLiteralImpl objectLiteral) {
         _model =  new HaxeObjectLiteralClassModel(objectLiteral);
+      } else if (this instanceof HaxeGenericListPart genericListPart) {
+        _model = new HaxeGenericParamModel(genericListPart);
       } else if (this instanceof HaxeAbstractTypeDeclaration abstractDeclaration) {
         if (abstractDeclaration.isEnum()) {
           _model = new HaxeAbstractEnumModel(abstractDeclaration);
@@ -179,6 +183,10 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     return  false;
   }
 
+  public boolean isTypeParameter() {
+    return  false;
+  }
+
 
 
 
@@ -203,49 +211,37 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
   }
 
   @NotNull
-  private List<HaxeMethod> _getHaxeMethodsSelf(@Nullable HaxeGenericResolver resolver) {
-    final List<HaxeNamedComponent> classMembers =  HaxeResolveUtil.getNamedSubComponents(this);
-    final List<HaxeNamedComponent> methods = HaxeResolveUtil.filterNamedComponentsByType(classMembers, HaxeComponentType.METHOD);
-    final List<HaxeMethod> result = new ArrayList<>();
-    for (HaxeNamedComponent method : methods) {
-      result.add((HaxeMethod)method);
-    }
-    return result;
+  private static List<HaxeMethod> getHaxeMethodsSelfCached(@NotNull HaxeClass haxeClass) {
+    return CachedValuesManager.getCachedValue(haxeClass, () -> {
+      final List<HaxeNamedComponent> classMembers = HaxeNamedSubComponentUtil.getNamedSubComponentsFromClassType(haxeClass);
+      final List<HaxeNamedComponent> methods = HaxeNamedSubComponentUtil.filterNamedComponentsByType(classMembers, HaxeComponentType.METHOD);
+      final List<HaxeMethod> result = new ArrayList<>();
+      for (HaxeNamedComponent method : methods) {
+        result.add((HaxeMethod) method);
+      }
+      return new CachedValueProvider.Result<>(result, haxeClass);
+    });
   }
 
   @NotNull
   @Override
   public List<HaxeMethod> getHaxeMethodsSelf(@Nullable HaxeGenericResolver resolver) {
-    // cache Methods when no resolver values
-    if (resolver == null || resolver.isEmpty()) {
-      return CachedValuesManager.getCachedValue(this, () -> {
-        List<HaxeMethod> methods = _getHaxeMethodsSelf(null);
-        return new CachedValueProvider.Result<>(methods, this);
-      });
-    }
-    return _getHaxeMethodsSelf(resolver);
-
+    return getHaxeMethodsSelfCached(this);
   }
-
-
 
   @NotNull
-  private List<HaxeNamedComponent> _getHaxeFieldsSelf(@Nullable HaxeGenericResolver resolver) {
-    final List<HaxeNamedComponent> result = HaxeResolveUtil.getNamedSubComponents(this);
-    return HaxeResolveUtil.filterNamedComponentsByType(result, HaxeComponentType.FIELD);
+  private static List<HaxeNamedComponent> getHaxeFieldsSelfCached(@NotNull HaxeClass haxeClass) {
+    return CachedValuesManager.getCachedValue(haxeClass, () -> {
+      final List<HaxeNamedComponent> result = HaxeNamedSubComponentUtil.getNamedSubComponents(haxeClass, false);
+      List<HaxeNamedComponent> components = HaxeNamedSubComponentUtil.filterNamedComponentsByType(result, HaxeComponentType.FIELD);
+      return new CachedValueProvider.Result<>(components, haxeClass);
+    });
   }
+
   @NotNull
   @Override
   public List<HaxeNamedComponent> getHaxeFieldsSelf(@Nullable HaxeGenericResolver resolver) {
-    // cache Methods when no resolver values
-    if (resolver == null || resolver.isEmpty()) {
-      return CachedValuesManager.getCachedValue(this, () -> {
-        List<HaxeNamedComponent> components = _getHaxeFieldsSelf(null);
-        return new CachedValueProvider.Result<>(components, this);
-      });
-    }
-    return _getHaxeFieldsSelf(resolver);
-
+    return getHaxeFieldsSelfCached(this);
   }
 
   @NotNull
@@ -257,50 +253,23 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
   @Nullable
   @Override
   public HaxeNamedComponent findHaxeFieldByName(@NotNull final String name, @Nullable HaxeGenericResolver resolver) {
-    List<HaxeNamedComponent> all = CachedValuesManager.getCachedValue(this, () -> AbstractHaxePsiClass.getHaxeFieldAllCached(this));
+    List<HaxeNamedComponent> all = getHaxeFieldAll(HaxeComponentType.INTERFACE);
     return ContainerUtil.find(all, component -> name.equals(component.getName()));
   }
 
-  private static CachedValueProvider.Result<List<HaxeNamedComponent>> getHaxeFieldAllCached(@NotNull AbstractHaxePsiClass haxePsiClass) {
-    List<HaxeNamedComponent> all = haxePsiClass.getHaxeFieldAll(HaxeComponentType.CLASS, HaxeComponentType.ENUM, HaxeComponentType.ABSTRACT, HaxeComponentType.TYPEDEF);
 
-    List<PsiElement> dependencies = collectCacheDependencies(haxePsiClass);
-    return CachedValueProvider.Result.create(all,  dependencies);
-  }
-
-  @NotNull
-  private static List<PsiElement> collectCacheDependencies(@NotNull AbstractHaxePsiClass haxePsiClass) {
-    List<PsiElement> dependencies = new ArrayList<>();
-
-    dependencies.add(haxePsiClass);
-    dependencies.addAll(Arrays.asList(haxePsiClass.getSupers()));
-
-    if (haxePsiClass instanceof  HaxeAbstractTypeDeclaration abstractTypeDeclaration) {
-      HaxeUnderlyingType type = abstractTypeDeclaration.getUnderlyingType();
-      SpecificHaxeClassReference reference = abstractTypeDeclaration.getModel().getUnderlyingClassReference(new HaxeGenericResolver());
-      if (reference != null) dependencies.add(reference.getHaxeClass());
-
-    }
-    return dependencies;
-  }
 
   @Override
   public HaxeNamedComponent findHaxeMethodByName(@NotNull final String name, @Nullable HaxeGenericResolver resolver) {
-    List<HaxeMethod> all = CachedValuesManager.getCachedValue(this, () ->AbstractHaxePsiClass.getHaxeMethodsAllCached(this));
+    List<HaxeMethod> all = getHaxeMethodsAll(HaxeComponentType.INTERFACE);
     return ContainerUtil.find(all, (Condition<HaxeNamedComponent>)component -> name.equals(component.getName()));
-  }
-
-  private static CachedValueProvider.Result<List<HaxeMethod>> getHaxeMethodsAllCached(@NotNull AbstractHaxePsiClass haxePsiClass) {
-    List<HaxeMethod> all = haxePsiClass.getHaxeMethodsAll(HaxeComponentType.CLASS, HaxeComponentType.ABSTRACT);
-
-    Collection<PsiElement> dependencies = collectCacheDependencies(haxePsiClass);
-    return CachedValueProvider.Result.create(all, dependencies);
   }
 
   /** Optimized path to replace findHaxeMethod and findHaxeField when used together. */
   @Override
   public HaxeNamedComponent findHaxeMemberByName(@NotNull final String name, @Nullable HaxeGenericResolver resolver) {
-    return ContainerUtil.find(HaxeResolveUtil.findNamedSubComponents(resolver, this),
+    List<HaxeNamedComponent> namedSubComponents = HaxeNamedSubComponentUtil.getAllNamedSubComponentsInType(this, resolver);
+    return ContainerUtil.find(namedSubComponents,
                               component -> {
       HaxeComponentType type = HaxeComponentType.typeOf(component);
       return ((type == HaxeComponentType.FIELD || type == HaxeComponentType.METHOD)
@@ -440,7 +409,6 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
   @Override
   @Nullable
   public PsiReferenceList getExtendsList() {
-    // LOG.debug("\n>>>\tgetExtendsList();");
     HaxeInheritList inh = PsiTreeUtil.getChildOfType(this, HaxeInheritList.class);
     return null == inh ? null : PsiTreeUtil.getChildOfType(inh, HaxeExtendsDeclaration.class);
   }
@@ -451,8 +419,23 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     final PsiReferenceList extendsList = this.getExtendsList();
     if (extendsList != null) {
       return extendsList.getReferencedTypes();
+    }else if (this instanceof  HaxeTypedefDeclaration typeDeclaration) {
+      HaxeTypeOrAnonymous typeOrAnonymous = typeDeclaration.getTypeOrAnonymous();
+      if (typeOrAnonymous != null) {
+        HaxeType type = typeOrAnonymous.getType();
+        if(type != null) {
+          HaxeReferenceExpression referenceExpression = type.getReferenceExpression();
+          return new PsiClassType[]{getReferencedType(referenceExpression)};
+        }
+      }
     }
     return PsiClassType.EMPTY_ARRAY;
+  }
+
+  @NotNull
+  private PsiClassType getReferencedType(HaxeReferenceExpression referenceExpression) {
+    PsiElementFactory factory = JavaPsiFacade.getInstance(getProject()).getElementFactory();
+    return factory.createType(referenceExpression);
   }
 
   @Override
@@ -499,17 +482,11 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     return haxeFields.toArray(psiFields);
   }
 
-  @NotNull
-  private PsiField[] _getAllFields() {
-    return PsiClassImplUtil.getAllFields(this);
-  }
+
   @Override
   @NotNull
   public PsiField[] getAllFields() {
-      return CachedValuesManager.getCachedValue(this, () -> {
-        @NotNull PsiField[] fields = _getAllFields();
-        return new CachedValueProvider.Result<>(fields, this);
-      });
+      return PsiClassImplUtil.getAllFields(this);
   }
 
   @Override
@@ -519,18 +496,18 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
   }
 
   @NotNull
-  private PsiMethod[] _getMethods() {
-    final List<HaxeNamedComponent> alltypes = HaxeResolveUtil.getNamedSubComponents(this);
-    final List<HaxeNamedComponent> methods = HaxeResolveUtil.filterNamedComponentsByType(alltypes, HaxeComponentType.METHOD);
-    return methods.toArray(PsiMethod.EMPTY_ARRAY); // size is irrelevant
+  private static PsiMethod[] getMethodsCached(HaxeClass haxeClass) {
+    return CachedValuesManager.getCachedValue(haxeClass, () -> {
+      final List<HaxeNamedComponent> alltypes = HaxeNamedSubComponentUtil.getNamedSubComponentsFromClassType(haxeClass);
+      final List<HaxeNamedComponent> methods = HaxeNamedSubComponentUtil.filterNamedComponentsByType(alltypes, HaxeComponentType.METHOD);
+      PsiMethod[] array = methods.toArray(PsiMethod.EMPTY_ARRAY);
+      return new CachedValueProvider.Result<>(array, haxeClass);
+    });
   }
   @Override
   @NotNull
   public PsiMethod[] getMethods() {
-      return CachedValuesManager.getCachedValue(this, () -> {
-        @NotNull PsiMethod[] methods1 = _getMethods();
-        return new CachedValueProvider.Result<>(methods1, this);
-      });
+    return getMethodsCached(this);
   }
 
   @Override
@@ -540,25 +517,13 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
   }
 
   @NotNull
-  public List<HaxeMethod> getHaxeMethodsAll(HaxeComponentType... fromTypesFilter) {
-    List<HaxeNamedComponent> methods = getAllHaxeNamedComponents(HaxeComponentType.METHOD, fromTypesFilter);
+  public List<HaxeMethod> getHaxeMethodsAll(HaxeComponentType... excludeTypesFilter) {
+    List<HaxeNamedComponent> methods = getAllHaxeNamedComponents(HaxeComponentType.METHOD, excludeTypesFilter);
     final List<HaxeMethod> result = new ArrayList<>();
     for (HaxeNamedComponent method : methods) {
       result.add((HaxeMethod)method);
     }
-    if (this.getModel() instanceof  HaxeAbstractClassModel model) {
-      if (model.hasForwards()) {
-        HaxeClass underlyingClass = model.getUnderlyingClass(null);
-        if (underlyingClass  instanceof  AbstractHaxePsiClass abstractHaxePsiClass) {
-          List<HaxeNamedComponent> components = abstractHaxePsiClass.getAllHaxeNamedComponents(HaxeComponentType.METHOD);
-          for (HaxeNamedComponent component : components) {
-            if (model.isForwarded(component.getName())) {
-              result.add((HaxeMethod)component);
-            }
-          }
-        }
-      }
-    }
+
     return result;
   }
   @NotNull
@@ -581,34 +546,17 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
   }
 
   @NotNull
-  public List<HaxeNamedComponent> getHaxeFieldAll(HaxeComponentType... fromTypesFilter) {
-    List<HaxeNamedComponent> fields = getAllHaxeNamedComponents(HaxeComponentType.FIELD, fromTypesFilter);
-    final List<HaxeNamedComponent> result = new ArrayList<>();
-    for (HaxeNamedComponent field : fields) {
-      result.add(field);
-    }
-    if (this.getModel() instanceof  HaxeAbstractClassModel model) {
-      if (model.hasForwards()) {
-        HaxeClass underlyingClass = model.getUnderlyingClass(null);
-        if (underlyingClass  instanceof  AbstractHaxePsiClass abstractHaxePsiClass) {
-          List<HaxeNamedComponent> components = abstractHaxePsiClass.getAllHaxeNamedComponents(HaxeComponentType.FIELD);
-          for (HaxeNamedComponent component : components) {
-            if (model.isForwarded(component.getName())) {
-              result.add(component);
-            }
-          }
-        }
-      }
-    }
-
-    return result;
+  public List<HaxeNamedComponent> getHaxeFieldAll(HaxeComponentType... excludeTypesFilter) {
+    List<HaxeNamedComponent> fields = getAllHaxeNamedComponents(HaxeComponentType.FIELD, excludeTypesFilter);
+      return new ArrayList<>(fields);
   }
 
   @NotNull
-  public List<HaxeNamedComponent>getAllHaxeNamedComponents(HaxeComponentType componentType, HaxeComponentType... fromTypesFilter) {
-    final List<HaxeNamedComponent> allNamedComponents = HaxeResolveUtil.getAllNamedSubComponentsFromClassType(this, fromTypesFilter);
-    return HaxeResolveUtil.filterNamedComponentsByType(allNamedComponents, componentType);
+  public List<HaxeNamedComponent>getAllHaxeNamedComponents(HaxeComponentType componentType, HaxeComponentType... excludeTypesFilter) {
+    final List<HaxeNamedComponent> allNamedComponents = HaxeNamedSubComponentUtil.getAllNamedSubComponentsFromClassType(this, excludeTypesFilter);
+    return HaxeNamedSubComponentUtil.filterNamedComponentsByType(allNamedComponents, componentType);
   }
+
   @NotNull
   public List<HaxeNamedComponent>getAncestorHaxeNamedComponents(HaxeComponentType componentType, boolean unique) {
     List<HaxeClass> supers = new ArrayList<>();
@@ -619,9 +567,9 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     }
 
     HaxeClass[] supersArray = supers.toArray(HaxeClass.EMPTY_ARRAY);
-
-    List<HaxeNamedComponent> allNamedComponents  = HaxeResolveUtil.findNamedSubComponents(unique, null, supersArray);
-    return HaxeResolveUtil.filterNamedComponentsByType(allNamedComponents, componentType);
+    List<HaxeNamedComponent> allNamedComponents = HaxeNamedSubComponentUtil.getAllNamedSubComponentsFromClassTypes(supers);
+    if(unique) allNamedComponents = HaxeNamedSubComponentUtil.uniqueNamedSubComponents(allNamedComponents);
+    return HaxeNamedSubComponentUtil.filterNamedComponentsByType(allNamedComponents, componentType);
   }
 
 

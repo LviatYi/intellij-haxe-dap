@@ -1,0 +1,124 @@
+/*
+ * Copyright 2000-2013 JetBrains s.r.o.
+ * Copyright 2014-2014 AS3Boyan
+ * Copyright 2014-2014 Elias Ku
+ * Copyright 2019 Eric Bishton
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.intellij.plugins.haxe.ide.hierarchy.type.treestructures;
+
+import com.intellij.ide.hierarchy.HierarchyNodeDescriptor;
+import com.intellij.ide.hierarchy.HierarchyTreeStructure;
+import com.intellij.openapi.progress.ProgressIndicatorProvider;
+import com.intellij.openapi.project.Project;
+import com.intellij.plugins.haxe.ide.hierarchy.type.HaxeTypeHierarchyNodeDescriptor;
+import com.intellij.plugins.haxe.lang.psi.*;
+import com.intellij.psi.PsiClass;
+import com.intellij.util.ArrayUtil;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.*;
+
+import static com.intellij.plugins.haxe.ide.index.HaxeInheritanceDefinitionsUtil.getItemsByQNameFirstLevelChildrenOnly;
+
+/**
+ * Created by srikanthg on 10/23/14.
+ */
+public class HaxeSubtypesHierarchyTreeStructure extends HierarchyTreeStructure {
+
+  protected final String currentScopeType;
+  protected HaxeSubtypesHierarchyTreeStructure(final Project project, String scopeType, final HaxeTypeHierarchyNodeDescriptor descriptor) {
+    super(project, descriptor);
+    currentScopeType = scopeType;
+  }
+
+  public HaxeSubtypesHierarchyTreeStructure(final Project project, final PsiClass psiClass, String scopeType) {
+    this(project, scopeType, new HaxeTypeHierarchyNodeDescriptor(project, null, psiClass, true));
+  }
+
+  @NotNull
+  protected final Object[] buildChildren(@NotNull final HierarchyNodeDescriptor descriptor) {
+
+    final HaxeClass theHaxeClass = ((HaxeTypeHierarchyNodeDescriptor) descriptor).getHaxeClass();
+    if (null == theHaxeClass) return ArrayUtil.EMPTY_OBJECT_ARRAY;
+
+    if (theHaxeClass instanceof HaxeAnonymousType) return ArrayUtil.EMPTY_OBJECT_ARRAY;
+    if (theHaxeClass.hasModifierProperty(HaxePsiModifier.FINAL_META)) return ArrayUtil.EMPTY_OBJECT_ARRAY;
+
+    // Get the list of subtypes from the file-based indices.  Stub-based would
+    // be faster, but we'll have to re-parent all of the PsiClass sub-classes.
+    List<PsiClass> subTypeList = getItemsByQNameFirstLevelChildrenOnly(theHaxeClass).stream()
+            // filter to match scope
+            .filter( type -> isInScope(type, type, currentScopeType))
+            .map(PsiClass.class::cast)
+            .toList();
+
+    return typeListToObjArray(((HaxeTypeHierarchyNodeDescriptor) descriptor), subTypeList);
+  }
+
+  @NotNull
+  private Object[] typeListToObjArray(@NotNull final HaxeTypeHierarchyNodeDescriptor descriptor, @NotNull final List<PsiClass> classes) {
+    final int size = classes.size();
+    if (size > 0) {
+      final List<HaxeTypeHierarchyNodeDescriptor> descriptors = new ArrayList<HaxeTypeHierarchyNodeDescriptor>(size);
+      for (PsiClass aClass : classes) {
+        descriptors.add(new HaxeTypeHierarchyNodeDescriptor(myProject, descriptor, aClass, false));
+      }
+      return descriptors.toArray(new HaxeTypeHierarchyNodeDescriptor[0]);
+    }
+    return ArrayUtil.EMPTY_OBJECT_ARRAY;
+  }
+
+  private static boolean isThisTypeASubTypeOfTheSuperType(PsiClass thisType, PsiClass theSuperType) {
+    if (!thisType.isValid()) return false;
+    final String tcfqn = thisType.getQualifiedName();
+    final String pscfqn = theSuperType.getQualifiedName();
+    if (pscfqn.equals(tcfqn)) return false; // it's the same class in LHS & RHS
+    final ArrayList<PsiClass> allSuperTypes = getSuperTypesAsList(thisType);
+    for (PsiClass aSuperType : allSuperTypes) {
+      if (pscfqn.equals(aSuperType.getQualifiedName())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  protected static PsiClass[] getSuperTypesAsArray(PsiClass theClass) {
+    if (!theClass.isValid()) return PsiClass.EMPTY_ARRAY;
+    final ArrayList<PsiClass> allSuperClasses = getSuperTypesAsList(theClass);
+    return allSuperClasses.toArray(new PsiClass[0]);
+  }
+
+  private static ArrayList<PsiClass> getSuperTypesAsList(PsiClass theClass) {
+    final ArrayList<PsiClass> allSuperClasses = new ArrayList<PsiClass>();
+    while (true) {
+      ProgressIndicatorProvider.checkCanceled();
+      final PsiClass aClass1 = theClass;
+      final PsiClass[] superTypes = aClass1.getSupers();
+      PsiClass superType = null;
+      for (int i = 0; i < superTypes.length; i++) {
+        final PsiClass type = superTypes[i];
+        if (!type.isInterface()) {
+          superType = type;
+          break;
+        }
+      }
+      if (superType == null) break;
+      if (allSuperClasses.contains(superType)) break;
+      allSuperClasses.add(superType);
+      theClass = superType;
+    }
+    return allSuperClasses;
+  }
+}
