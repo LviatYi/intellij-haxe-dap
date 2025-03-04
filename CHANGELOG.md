@@ -4,6 +4,10 @@
 
 * Changed: Merge Intellij-Haxe 1.6.0 into this repo.
 
+## 2.0.3-beta
+
+* Changed: add support for exception crash when debugging.
+
 ## 2.0.2-beta
 
 * Changed: clear buffer when debugger stop.
