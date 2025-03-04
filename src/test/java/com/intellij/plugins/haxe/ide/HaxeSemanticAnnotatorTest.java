@@ -178,6 +178,11 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   }
 
   @Test
+  public void testNullCoalescingTest() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
   public void testInitMagicMethodShouldBeStatic() throws Exception {
     doTestNoFixWithWarnings();
   }
@@ -356,6 +361,12 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   }
 
   @Test
+  public void testExtensionMethodsForFunctionTypes() throws Exception {
+    myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
+    doTestNoFixWithWarnings("extensions/FunctionExtensions.hx");
+  }
+
+  @Test
   public void testFieldInitializerCheck() throws Exception {
     doTestNoFixWithWarnings();
   }
@@ -367,6 +378,11 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
 
   @Test
   public void testVariableShadowing() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testFieldPropertyConstraint() throws Exception {
     doTestNoFixWithWarnings();
   }
 
@@ -401,6 +417,15 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
 
   @Test
   public void testArrayAssignmentWrongType() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testArrayComprehensionsWithCast() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+  @Test
+  public void testArrayComprehensionsWithExpression() throws Exception {
     doTestNoFixWithWarnings();
   }
 
@@ -587,6 +612,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   }
 
   @Test
+  public void testArrayLiteralTypeDetectionAndCast() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+  @Test
   public void testAssignClassToInt() throws Exception {
     doTestNoFixWithWarnings();
   }
@@ -629,6 +658,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
     doTestNoFixWithWarnings();
   }
 
+  @Test
+  public void testDowncastTest() throws Exception {
+    doTestNoFixWithWarnings();
+  }
   @Test
   public void testEitherTypeTest() throws Exception {
     doTestNoFixWithWarnings();
@@ -768,6 +801,20 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
 
   @Test
   public void testParameterizedFunctions() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testFunctionBind1() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+  @Test
+  public void testFunctionBind2() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testGenericFromClassArg() throws Exception {
     doTestNoFixWithWarnings();
   }
 

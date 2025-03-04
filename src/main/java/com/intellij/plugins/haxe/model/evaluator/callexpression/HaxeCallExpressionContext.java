@@ -25,6 +25,7 @@ import static com.intellij.plugins.haxe.model.evaluator.assign.HaxeTypeCompatibl
 public class HaxeCallExpressionContext {
 
     private static final RecursionGuard<RecursionKey> canAssignRecursionGuard = RecursionManager.createGuard("canAssignRecursionGuard");
+    public boolean isBindCall;
 
 
     private record RecursionKey(PsiElement argumentContext, PsiElement parameterContext){}
@@ -42,7 +43,7 @@ public class HaxeCallExpressionContext {
 
     @Setter
     @Nullable
-    SpecificHaxeClassReference callie;
+    SpecificTypeReference callie;
     SpecificTypeReference assignHint;
 
     @Nullable
@@ -103,12 +104,12 @@ public class HaxeCallExpressionContext {
         boolean hasRestParam = hasRestParameter(parameters);
 
         int minArgRequired = countRequiredArguments(parameters) - (firstArgIsThisReference ? 1 : 0);
-        int maxArgAllowed = hasRestParam ? Integer.MAX_VALUE : parameters.size() - (firstArgIsThisReference ? 1 : 0);
+        int maxArgAllowed = hasRestParam && !isBindCall ? Integer.MAX_VALUE : parameters.size() - (firstArgIsThisReference ? 1 : 0);
         int argumentCount = arguments.size();
 
 
         // min arg check
-        if (argumentCount < minArgRequired) {
+        if (argumentCount < minArgRequired && !isBindCall) {
             if (trackErrors) addToFewArgumentError(evaluation, minArgRequired);
             return evaluation.validationFailed();
         }
@@ -119,7 +120,10 @@ public class HaxeCallExpressionContext {
         }
 
 
-        SpecificTypeReference resolvedCallie = callie != null?  callie.fullyResolveTypeDefAndUnwrapNullTypeReference() : null;
+        SpecificTypeReference resolvedCallie = callie  instanceof  SpecificHaxeClassReference reference
+                ?  reference.fullyResolveTypeDefAndUnwrapNullTypeReference()
+                : null;
+
         evaluation.callieResolver = getCallieResolver(resolvedCallie);
 
         // we use 2 different resolvers here because the callExpression might be inside the same class as the callie
@@ -185,7 +189,16 @@ public class HaxeCallExpressionContext {
                 if (parameters.size() > parameterCounter) {
                     parameterModel = parameters.get(parameterCounter++);
                     if (parameterModel.isRest()){
-                        reachedRestParameter = true;
+                        // sanity check for MacroVarArgOrRest, aka Array<Expr>
+                        // if argument is array then this might be a normal parameter and not a rest-parameter
+                        SpecificTypeReference typeFromModel = parameterModel.getType();
+                        if (HaxeMacroTypeUtil.isMacroVarArgOrRestType(typeFromModel)) {
+                            if (!typeFromModel.canAssign(argumentModel.getType())) {
+                                reachedRestParameter = true;
+                            }
+                        }else {
+                            reachedRestParameter = true;
+                        }
                     }
                 } else {
                     // out of parameters and last is not var arg, must mean that ve have skipped optionals and still had arguments left
@@ -203,7 +216,7 @@ public class HaxeCallExpressionContext {
                 }
             }
             //
-            SpecificTypeReference originalParameterType = reachedRestParameter ? parameterModel.getRestType() : parameterModel.getType();
+            SpecificTypeReference originalParameterType = reachedRestParameter  && !isBindCall ? parameterModel.getRestType() : parameterModel.getType();
             parameterType = tryResolve(combinedResolver, originalParameterType, null);
             argumentType = tryResolve(argumentResolver, argumentModel.getType(), isConstructor? null : parameterType);
 
@@ -242,7 +255,7 @@ public class HaxeCallExpressionContext {
                     evaluation.validationFailed();
                 }
                 combinedResolver.addAll(parameterResolver);// update commbined resolver
-            } else if (parameterModel.isOptional()) {
+            } else if (parameterModel.isOptional() && !isBindCall) {// bind does not allow skip on optional
                 // optional parameter did not match argument, continue
                 argumentCounter--;  //prevent loop from picking next argument
             } else {
@@ -443,7 +456,7 @@ public class HaxeCallExpressionContext {
                     for (int i = 0; i < currentSpecifics.length; i++) {
                         ResultHolder currentSpecific = currentSpecifics[i];
                         // TODO should probably traverse types instead of  substituting when containsTypeParameters is true
-                        if(currentSpecific.isTypeParameter() || currentSpecific.containsTypeParameters()) {
+                        if(currentSpecific.isTypeParameter() || currentSpecific.isOrContainsTypeParameters()) {
                             if (hintSpecifics.length> i) {
                                 ResultHolder hintSpecific = hintSpecifics[i];
                                 if (currentSpecific.canAssign(hintSpecific)) {
@@ -526,6 +539,7 @@ public class HaxeCallExpressionContext {
 
 
     private void addToFewArgumentError(HaxeCallExpressionEvaluation evaluation, int minArgRequired) {
+        if(isBindCall) return; // ignore missing arguments if bind call (bind has rules handling missing arguments)
         String message = HaxeBundle.message("haxe.semantic.method.parameter.missing", minArgRequired, arguments.size());
         if (sourceExpression instanceof HaxeCallExpression callExpression) {
             if (!arguments.isEmpty() && callExpression.getExpressionList() != null) {

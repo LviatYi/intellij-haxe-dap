@@ -51,9 +51,11 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
   private static final Key<CachedValue<Set<SpecificHaxeClassReference>>> COMPATIBLE_TYPES_TO_KEY = new Key<>("HAXE_COMPATIBLE_TYPES_TO");
   private static final Key<CachedValue<Set<SpecificHaxeClassReference>>> COMPATIBLE_TYPES_FROM_KEY = new Key<>("HAXE_COMPATIBLE_TYPES_FROM");
   private static final Key<CachedValue<Set<SpecificHaxeClassReference>>> INFER_TYPES_KEY = new Key<>("HAXE_INFER_TYPES");
+  // TODO mlo : see if we can replace these with RecursionGuard somehow
   private static final ThreadLocal<Stack<HaxeClass>> processedElements = ThreadLocal.withInitial(Stack::new);
-  private static final ThreadLocal<Stack<SpecificHaxeClassReference>> processedElementsToString = ThreadLocal.withInitial(Stack::new);
   private static final ThreadLocal<SpecificHaxeClassReference> currentProcessingElement = new ThreadLocal<>();
+
+  private static final RecursionGuard<PsiElement> processedElementsToStringRecursionGuard = RecursionManager.createGuard("processedElementsToStringRecursionGuard");
 
   @NotNull private final HaxeClassReference classReference;
   @NotNull private final ResultHolder[] specifics;
@@ -153,37 +155,38 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
     return constantValue;
   }
 
+
   public String toPresentationString() {
     return toPresentationString(false);
   }
-  public String toPresentationString(boolean showOnlyConstraintForTypeParam) {
-    Stack<SpecificHaxeClassReference> stack = processedElementsToString.get();
-    try {
+
+  public String toPresentationString(boolean showOnlyConstraintForTypeParam){
+    String  presentation = processedElementsToStringRecursionGuard.doPreventingRecursion(context, true, ()-> _toPresentationString(showOnlyConstraintForTypeParam));
+
+    if (presentation == null) {
+        log.warn("toPresentationString overflow prevention");
+        return toPresentationStringNoResolve();
+    }else {
+      return presentation;
+    }
+  }
+  private String _toPresentationString(boolean showOnlyConstraintForTypeParam) {
       HaxeClassModel classModel = getHaxeClassModel();
 
-      if(showOnlyConstraintForTypeParam) {
-        // Inlays, errors and warnings usually makes more sense to the end-user when displaying just the constraints
-        if (isTypeParameterWithConstraints()) {
-          if (classModel instanceof HaxeGenericParamModel genericParamModel) {
-            ResultHolder constraint = genericParamModel.getConstraint(null);
-            if (constraint != null) {
-              return constraint.toPresentationString(true);
-            }
+    if(showOnlyConstraintForTypeParam) {
+      // Inlays, errors and warnings usually makes more sense to the end-user when displaying just the constraints
+      if (isTypeParameterWithConstraints()) {
+        if (classModel instanceof HaxeGenericParamModel genericParamModel) {
+          ResultHolder constraint = genericParamModel.getConstraint(null);
+          if (constraint != null) {
+            return constraint.toPresentationString(true);
           }
         }
       }
+    }
 
-      // stack overflow guard
-      if (stack.contains(this) && classModel != null) {
-        List<HaxeGenericParamModel> params = classModel.getGenericParams();
-        if (!params.isEmpty()) {
-          log.warn("toString overflow prevention");
-          return "?"; // prevent overflow
-        }
-      }
-      stack.add(this);
 
-      StringBuilder out = new StringBuilder(this.getHaxeClassReference().getName());
+    StringBuilder out = new StringBuilder(this.getHaxeClassReference().getName());
       if (!(this instanceof  SpecificHaxeAnonymousReference)) {
         ResultHolder[] specifics = getSpecifics();
         if (specifics.length > 0) {
@@ -206,7 +209,6 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
               log.warn("`this` and `specific.getType()` are the same object (Recursion protection)");
             }
             else {
-//              out.append(specific.toStringWithoutConstant());
               out.append(specific.toPresentationString(showOnlyConstraintForTypeParam));
             }
           }
@@ -223,13 +225,36 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
       if (result.equals("Dynamic<Dynamic>")) return "Dynamic";
       if (result.equals("Dynamic<unknown>")) return "Dynamic";
       return result;
-    }finally {
-      stack.remove(this);
-    }
   }
 
+
+
+  public String toPresentationStringNoResolve() {
+    StringBuilder out = new StringBuilder(this.getHaxeClassReference().getName());
+    if (!(this instanceof  SpecificHaxeAnonymousReference)) {
+      ResultHolder[] specifics = getSpecifics();
+      if (specifics.length > 0) {
+        out.append("<");
+        for (int n = 0; n < specifics.length; n++) {
+          if (n > 0) out.append(", ");
+          ResultHolder specific = specifics[n];
+          if (specific == null) {
+            out.append(UNKNOWN);
+          } else {
+            if(specific.getType() instanceof SpecificHaxeClassReference classReference) {
+              out.append(classReference.getClassName());
+            }else {
+              out.append("?");
+            }
+          }
+        }
+        out.append(">");
+      }
+    }
+    return out.toString();
+  }
   public String toStringWithoutConstant() {
-    return toPresentationString(false);
+    return toPresentationString();
   }
 
   public String toStringWithConstant() {
@@ -406,7 +431,7 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
 
     if (targetHaxeClass == null || sourceHaxeClass == null){
       return null;
-    }  else if (targetHaxeClass.getQualifiedName().equals(sourceHaxeClass.getQualifiedName())) {
+    }  else if (Objects.equals(targetHaxeClass.getQualifiedName(), sourceHaxeClass.getQualifiedName())) {
       return this;
     }
     HaxeClassModel classModel = targetClass.getHaxeClassModel();
@@ -437,7 +462,7 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
 
     if (targetHaxeClass == null || sourceHaxeClass == null){
       return null;
-    }  else if (targetHaxeClass.getQualifiedName().equals(sourceHaxeClass.getQualifiedName())) {
+    }  else if (Objects.equals(targetHaxeClass.getQualifiedName(), sourceHaxeClass.getQualifiedName())) {
       return this;
     }
     HaxeClassModel classModel = targetClass.getHaxeClassModel();
@@ -486,7 +511,7 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
       // tracking all classes sub-classes interfaces or anything else that might change type compatibility would be very complex
 
       // in order to use CachedValuesManager our CachedValueProvider can not be a lambda or method as part of a class instance
-      // that contains PSI elements as the lambda/method reference would indirectly keep that psi elementand cause memory leaks
+      // that contains PSI elements as the lambda/method reference would indirectly keep that psi element and cause memory leaks
       // or access to an invalid PSI
       currentProcessingElement.set(this);
       if ( direction == Compatibility.ASSIGNABLE_TO) {
@@ -736,7 +761,9 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
     return _isTypeDefOfFunction;
   }
 
-  public SpecificHaxeClassReference resolveTypeDefClass() {
+  @Nullable
+  //Note that typeDef of typeParameter (typedef TD<T> = T) can return any type
+  public SpecificTypeReference resolveTypeDefOfClassOrTypeParam() {
     if (typeDefClass != null && typeDefClass.getGenericResolver().isEmpty())  return typeDefClass;
     if (isTypeDef()) {
       HaxeClassModel model = getHaxeClassModel();
@@ -744,7 +771,13 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
         HaxeGenericResolver genericResolver = this.getGenericResolver();
         if(model.getUnderlyingType() instanceof  SpecificHaxeClassReference underlyingClassReference) {
           HaxeGenericResolver underlyingResolver = genericResolver.translateFromTo(this.getHaxeClass(), underlyingClassReference.getHaxeClass());
-          return model.getUnderlyingClassReference(underlyingResolver);
+          SpecificTypeReference underlyingType = model.getUnderlyingType();
+          ResultHolder resolve = underlyingResolver.resolve(underlyingType);
+          if(resolve != null && !resolve.isUnknown())  {
+            return resolve.getType();
+          }else {
+            return underlyingType;
+          }
         }
       }
     }
@@ -757,22 +790,24 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
       return  resolveTypeDefFunction();
     }
 
-    SpecificHaxeClassReference reference = resolveTypeDefClass();
+    SpecificTypeReference reference = resolveTypeDefOfClassOrTypeParam();
 
     HaxeClass haxeClass = getHaxeClass();
     HaxeGenericResolver resolver = getGenericResolver();
     while (haxeClass instanceof AbstractHaxeTypeDefImpl typeDef) {
       HaxeFunctionType functionType = typeDef.getFunctionType();
-      if (functionType != null) {
-        SpecificFunctionReference reference1 = reference.resolveTypeDefFunction();
+      if (functionType != null && reference instanceof SpecificHaxeClassReference classReference) {
+        SpecificFunctionReference reference1 = classReference.resolveTypeDefFunction();
         return resolver.resolve(reference1);
       }
       reference = typeDef.getTargetClass(resolver);
-      if (reference!= null && reference.isTypeDefOfClass()) {
-        haxeClass = reference.getHaxeClass();
-        resolver = reference.getGenericResolver();
-      }else{
-        break;
+      if(reference instanceof SpecificHaxeClassReference classReference) {
+        if (classReference.isTypeDefOfClass()) {
+          haxeClass = classReference.getHaxeClass();
+          resolver = classReference.getGenericResolver();
+        } else {
+          break;
+        }
       }
     }
     return reference;
@@ -802,12 +837,17 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
       }
 
       if (isTypeDefOfClass()) {
-        SpecificHaxeClassReference reference;
+        SpecificHaxeClassReference reference = null;
         if (unwrapExprOf && this.isExprOf()) {
           reference = this;
         }
         else {
-          reference = resolveTypeDefClass();
+          SpecificTypeReference resolvedRef = resolveTypeDefOfClassOrTypeParam();
+          if(resolvedRef instanceof SpecificHaxeClassReference resolvedClassReference) {
+            reference = resolvedClassReference;
+          }else {
+            return resolvedRef;
+          }
         }
 
 
@@ -1061,7 +1101,7 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
     // we might want to resolve T itself first before we  try to apply it  to our initial type, however this might cause problems.
     // if T happens to contain a typeParameter with the same name (ex. Map<T,Q>) we would end up with a recursive Map<Map<Map<...>,
     // so we must exclude the names that have been used if we go down this route
-    else if (typeHolder.containsTypeParameters()) {
+    else if (typeHolder.isOrContainsTypeParameters()) {
 
 
       if (typeHolder.getType() instanceof SpecificFunctionReference functionReference) {
@@ -1088,7 +1128,7 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
             }
             // if specific is not a not type parameter its type might still contain typeParameters
             // that might contain type parameters we want to resolve
-          }else if (originalSpecific.containsTypeParameters()) {
+          }else if (originalSpecific.isOrContainsTypeParameters()) {
             HaxeGenericResolver localResolver = new HaxeGenericResolver();
             // all parent resolver values as we might use them in resolve
             localResolver.addAll(genericResolver);
@@ -1157,18 +1197,23 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
     return new SpecificHaxeClassReference(classReference, specifics, constantValue, rangeConstraint, element);
   }
 
-// TODO mlo: should be moved to a "SpecificAbstractReference" like class
-//   explicit and implicit casts are only relevant for abstracts  and should not be inherited
+  @Override
+  public PsiElement getTypePsi() {
+    return getHaxeClass();
+  }
+
+  // TODO mlo: should be moved to a "SpecificAbstractReference" like class
+//   direct and implicit casts are only relevant for abstracts  and should not be inherited
 //   by classes, enums, and anonymous structures
-  public List<SpecificTypeReference> getExplicitCastToTypes() {
+  public List<SpecificTypeReference> getDirectCastToTypes() {
     if(this.getHaxeClassModel() instanceof HaxeAbstractClassModel abstractModel) {
-      return abstractModel.getExplicitCastToTypes(getGenericResolver());
+      return abstractModel.getDirectCastToTypes(getGenericResolver());
     }
     return List.of();
   }
-  public List<SpecificTypeReference> getExplicitCastFromTypes() {
+  public List<SpecificTypeReference> getDirectCastFromTypes() {
     if(this.getHaxeClassModel() instanceof HaxeAbstractClassModel abstractModel) {
-      return abstractModel.getExplicitCastFromTypes(getGenericResolver());
+      return abstractModel.getDirectCastFromTypes(getGenericResolver());
     }
     return List.of();
   }

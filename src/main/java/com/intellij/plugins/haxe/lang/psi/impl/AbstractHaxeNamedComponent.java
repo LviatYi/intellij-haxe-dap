@@ -22,6 +22,8 @@ package com.intellij.plugins.haxe.lang.psi.impl;
 import com.intellij.find.findUsages.PsiElement2UsageTargetAdapter;
 import com.intellij.lang.ASTNode;
 import com.intellij.navigation.ItemPresentation;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.plugins.haxe.HaxeComponentType;
@@ -58,8 +60,18 @@ abstract public class AbstractHaxeNamedComponent extends HaxePsiCompositeElement
   implements HaxeNamedComponent, PsiNamedElement {
 
 
+  private HaxeComponentType componentType = null;
+
   public AbstractHaxeNamedComponent(@NotNull ASTNode node) {
     super(node);
+  }
+
+  @Override
+  public HaxeComponentType getComponentType() {
+    if(componentType == null) {
+      componentType = HaxeComponentType.typeOf(this);;
+    }
+    return componentType;
   }
 
   @Override
@@ -70,9 +82,11 @@ abstract public class AbstractHaxeNamedComponent extends HaxePsiCompositeElement
   }
 
   private static String getCachedName(AbstractHaxeNamedComponent namedComponent) {
-    HaxeComponentName componentName = CachedValuesManager.getCachedValue(namedComponent, () -> new CachedValueProvider.Result<>(namedComponent.getComponentName(), namedComponent));
-    if(componentName == null) return null;
-    return CachedValuesManager.getCachedValue(componentName, () -> new CachedValueProvider.Result<>(componentName.getText(),  componentName));
+    return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+      HaxeComponentName componentName = CachedValuesManager.getCachedValue(namedComponent, () -> new CachedValueProvider.Result<>(namedComponent.getComponentName(), namedComponent));
+      if (componentName == null) return null;
+      return CachedValuesManager.getCachedValue(componentName, () -> new CachedValueProvider.Result<>(componentName.getText(), componentName));
+    });
   }
 
 
@@ -87,7 +101,7 @@ abstract public class AbstractHaxeNamedComponent extends HaxePsiCompositeElement
 
   @Override
   public Icon getIcon(int flags) {
-    final HaxeComponentType type = HaxeComponentType.typeOf(this);
+    final HaxeComponentType type = getComponentType();
     return type == null ? null : type.getIcon();
   }
 
@@ -133,7 +147,7 @@ abstract public class AbstractHaxeNamedComponent extends HaxePsiCompositeElement
             ResultHolder type = objectLiteralMemberModel.getResultType(null);
             if(type != null && !type.isUnknown()) {
               result.append(':');
-              result.append(type.getType().withoutConstantValue().toPresentationString(false));
+              result.append(type.getType().withoutConstantValue().toPresentationString());
             }
           }
         }

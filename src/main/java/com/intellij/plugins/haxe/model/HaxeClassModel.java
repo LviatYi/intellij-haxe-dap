@@ -123,11 +123,11 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   }
 
   public boolean isClass() {
-    return !this.isAbstractType() && (typeOf(haxeClass) == CLASS);
+    return !this.isAbstractType() && (haxeClass.getComponentType() == CLASS);
   }
 
   public boolean isInterface() {
-    return typeOf(haxeClass) == INTERFACE;
+    return haxeClass.getComponentType() == INTERFACE;
   }
 
   public boolean isEnum() {
@@ -135,7 +135,7 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   }
 
   public boolean isTypedef() {
-    return typeOf(haxeClass) == TYPEDEF;
+    return haxeClass.getComponentType() == TYPEDEF;
   }
 
   public boolean isTypeParameter() {
@@ -272,6 +272,8 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   }
 
   @Nullable
+  //TODO mlo: rewrite:
+  //WARNING!  if underlying is just a TypeParameter then  this can resolve to anything and a class return type can not be guarantied
   public SpecificHaxeClassReference getUnderlyingClassReference(@NotNull HaxeGenericResolver resolver) {
     if (!isAbstractType() && !isTypedef()) return null;
 

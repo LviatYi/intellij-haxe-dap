@@ -34,7 +34,7 @@ public class HaxeFieldAnnotator implements Annotator {
     }
     else {
       if (FINAL_FIELD_IS_INITIALIZED.isEnabled(var)) {
-        if (field.isFinal()) {
+        if (field.isFinal() && !field.isExtern()) {
           if (field.getDeclaringClass() == null || !field.getDeclaringClass().isExtern()) {
             if (!field.hasInitializer()) {
               if (!isParentInterface(var) && !isParentAnonymousStructure(var) && !isParentAbstractEnum(var)) {
@@ -234,10 +234,10 @@ public class HaxeFieldAnnotator implements Annotator {
     }
 
     HaxeClassModel declaringClass = field.getDeclaringClass();
-
-    if (declaringClass != null && declaringClass.isInterface()) {
-      return;
+    if(declaringClass != null) {
+      if (declaringClass.isInterface() || declaringClass.isAnonymous()) return;
     }
+
 
     HaxeCommonMembersModel membersModel = declaringClass != null ? declaringClass : field.getDeclaringModule();
 

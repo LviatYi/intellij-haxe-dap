@@ -53,6 +53,14 @@ public class SpecificFunctionReference extends SpecificTypeReference {
     return type.isUnknown() || type.containsUnknownTypes();
   }
 
+  public SpecificFunctionReference performMethodBind(List<HaxeArgument> newArgumentList) {
+    if(functionType != null) {
+      return new SpecificFunctionReference(newArgumentList, returnValue,functionType,context);
+    }else {
+    return  new SpecificFunctionReference(newArgumentList, returnValue,method,context);
+    }
+  }
+
 
   public static class StdFunctionReference extends SpecificFunctionReference {
     public StdFunctionReference(@NotNull PsiElement context) {
@@ -121,6 +129,11 @@ public class SpecificFunctionReference extends SpecificTypeReference {
       }
       return genericsTypes;
     }
+
+  @Override
+  public PsiElement getTypePsi() {
+    return method == null ? functionType : method.getMethodPsi();
+  }
 
   public static SpecificFunctionReference create(HaxeMethodModel model) {
     LinkedList<HaxeArgument> args = new LinkedList<>();

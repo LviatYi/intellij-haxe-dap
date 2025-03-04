@@ -145,7 +145,7 @@ public class HaxeExpressionUsageUtil {
     // AND stop any other logic picking up typeParameters from later reference when current reference is skipped by the recursion guard.
     // This is a common problem when you got a variable that gets its typeParameters from method calls on that instance,
     // and our code will try to find callie type
-    var newValues = searchReferencesForTypeParametersRecursionGuard.computePreventingRecursion(componentName, false, () -> {
+    var newValues = searchReferencesForTypeParametersRecursionGuard.computePreventingRecursion(componentName, false, () -> { //TODO mlo: figure out if we can optimize
       ResultHolder updatedType = resultHolder.duplicate();
       SpecificHaxeClassReference classType = updatedType.getClassType();
       // TODO mlo: should we add some kind of support for functions here ?
@@ -277,7 +277,7 @@ public class HaxeExpressionUsageUtil {
         if (leftArgType.getClassType() != null) {
           if (leftArgType.getClassType().getHaxeClass() instanceof HaxeTypeParameterDeclaration tp) {
             resolver.add(tp, rightArgType.getType().createHolder());
-          } else if (leftArgType.containsTypeParameters()) {
+          } else if (leftArgType.isOrContainsTypeParameters()) {
             resolver.addAll(findAndSetResolverValues(leftArgType, rightArgType, resolver));
           }
         }
@@ -337,29 +337,31 @@ public class HaxeExpressionUsageUtil {
     if (foundType == null) return current;
 
     // if class try to cast before attempting to  extract generics (Dynamic, Any  etc will get passed canAssign checks)
-    foundType = foundType.tryCastTo(current.getClassType());
-    if (foundType == null) return current;
+    SpecificHaxeClassReference casted = foundType.tryCastTo(current.getClassType());
+    if (casted == null || casted.getTypePsi() != current.getType().getTypePsi()) return current;
 
-    HaxeGenericResolver foundResolver = foundType.getGenericResolver();
-    HaxeGenericResolver mappedResolver = foundResolver.translateFromTo(foundType.getHaxeClass(), current.getClassType().getHaxeClass());
 
     @NotNull ResultHolder[] currentSpecifics = current.getClassType().getSpecifics();
-    @NotNull ResultHolder[] foundSpecifics = mappedResolver.getSpecifics();
+    @NotNull ResultHolder[] foundSpecifics = casted.getSpecifics();
     @NotNull ResultHolder[] newSpecifics = new ResultHolder[currentSpecifics.length];
-      for (int i = 0; i < foundSpecifics.length; i++) {
+      for (int i = 0; i < newSpecifics.length; i++) {
           ResultHolder currentSpecific = currentSpecifics[i];
           ResultHolder foundSpecific = foundSpecifics[i];
           // important, make sure we are not updating already found values
-          if (currentSpecific.canMutate()
+          if (currentSpecific.canMorph()
               // might not be the best solution but an attempt to avoid disableMutating when typeParameter was not used.
               // Our methods return a complete type with all typeParameters so here we guess that unchanged means not used.
               &&  (currentSpecific.getType() !=  foundSpecific.getType())
               && (currentSpecific.isUnknown() ||  (currentSpecific.isTypeParameter()  && currentSpecific.canAssign(foundSpecific))))
           {
             newSpecifics[i] = foundSpecific.duplicate();
-            newSpecifics[i].disableMutating();
+            newSpecifics[i].disableMorphing();
           }else {
-            newSpecifics[i] = currentSpecific;
+            if(currentSpecific.containsUnknownTypeParameters()) {
+              newSpecifics[i] = mapTypeParameter(currentSpecific, foundSpecific);
+            }else {
+              newSpecifics[i] = currentSpecific;
+            }
           }
       }
 
@@ -612,7 +614,7 @@ public class HaxeExpressionUsageUtil {
         if (left.resolve() instanceof  HaxePsiField field) {
           if(field.getTypeTag() != null) {
             ResultHolder memberType = HaxeTypeResolver.getTypeFromTypeTag(field.getTypeTag(), field);
-            if(memberType.containsTypeParameters()) {
+            if(memberType.isOrContainsTypeParameters()) {
               HaxeExpressionEvaluatorContext evaluate = evaluate(assignExpression.getRightExpression());
               ResultHolder rightType = evaluate.result;
               if(memberType.canAssign(rightType)) {

@@ -28,6 +28,7 @@ import com.intellij.plugins.haxe.model.evaluator.assign.HaxeTypeCompatible;
 import com.intellij.plugins.haxe.util.HaxeProjectUtil;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.psi.util.PsiUtilCore;
 import lombok.CustomLog;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -63,6 +64,9 @@ public abstract class SpecificTypeReference {
   public static final String ENUM_VALUE_MAP = "haxe.ds.EnumValueMap";
   public static final String MAP_INTERFACE = "haxe.Constraints.IMap";
   public static final String ANY = "Any"; // Specifically, the "Any" class; See <Haxe>/std/Any.hx.
+  // varargs
+  public static final String REST = "haxe.Rest";
+  public static final String EXTERN_REST = "haxe.extern.Rest";
 
   /**
    * The context is a parent to be used in a treeWalkUp -- see {@link PsiElement#getContext()}.
@@ -87,6 +91,10 @@ public abstract class SpecificTypeReference {
 
     final ResultHolder[] generics = new ResultHolder[]{keyType, valueType};
     return getStdClass(MAP, context, generics);
+  }
+
+  public static SpecificTypeReference wrapInRest(PsiElement basePsi, ResultHolder holder) {
+      return getStdClass(REST, basePsi, new ResultHolder[]{holder});
   }
 
   /**
@@ -528,6 +536,7 @@ public abstract class SpecificTypeReference {
 
   @NotNull
   private static HaxeClassReference getUnknownClassReference(@NotNull PsiElement context) {
+    PsiUtilCore.ensureValid(context);
     return new HaxeClassReference( UNKNOWN, HaxeClass.createUnknownClass(context.getNode()).getModel(), context);
   }
 
@@ -542,6 +551,24 @@ public abstract class SpecificTypeReference {
   }
 
 
+  public boolean isSameTypeAndGenerics(SpecificTypeReference other) {
+    if (other == null) return false;
+    if (!isSameType(other)) return false;
+    if (this instanceof SpecificHaxeClassReference thisClass
+        && other instanceof SpecificHaxeClassReference otherClass) {
+      @NotNull ResultHolder[] thisSpecifics = thisClass.getSpecifics();
+      @NotNull ResultHolder[] otherSpecifics = otherClass.getSpecifics();
+      if (thisSpecifics.length != otherSpecifics.length) return false;
+      for (int i = 0; i < thisSpecifics.length; i++) {
+        ResultHolder thisSpecific = thisSpecifics[i];
+        ResultHolder otherSpecific = otherSpecifics[i];
+        if (!thisSpecific.getType().isSameTypeAndGenerics(otherSpecific.getType())){
+          return false;
+        }
+      }
+    }
+    return true;
+  }
 
   public boolean isSameType(@NotNull SpecificTypeReference other) {
     if (!this.getClass().equals(other.getClass())) {
@@ -586,14 +613,18 @@ public abstract class SpecificTypeReference {
   public boolean isExpr() {
      if (this instanceof SpecificHaxeClassReference classReference) {
        HaxeClass aClass = classReference.getHaxeClass();
-       return aClass != null && aClass.getQualifiedName().equalsIgnoreCase(HaxeMacroTypeUtil.EXPR);
+       if (aClass == null) return false;
+       String qualifiedName = aClass.getQualifiedName();
+       return qualifiedName!= null && qualifiedName.equalsIgnoreCase(HaxeMacroTypeUtil.EXPR);
      }
     return false;
   }
   public boolean isExprOf() {
      if (this instanceof SpecificHaxeClassReference classReference) {
        HaxeClass aClass = classReference.getHaxeClass();
-       return aClass != null && aClass.getQualifiedName().equalsIgnoreCase(HaxeMacroTypeUtil.EXPR_OF);
+       if (aClass == null) return false;
+       String qualifiedName = aClass.getQualifiedName();
+       return qualifiedName!= null && qualifiedName.equalsIgnoreCase(HaxeMacroTypeUtil.EXPR_OF);
      }
     return false;
   }
@@ -620,4 +651,7 @@ public abstract class SpecificTypeReference {
   public SpecificHaxeClassReference wrapInNullType(@NotNull PsiElement context) {
     return SpecificHaxeClassReference.getNull(context, this.createHolder());
   }
+
+  public abstract PsiElement getTypePsi();
+
 }

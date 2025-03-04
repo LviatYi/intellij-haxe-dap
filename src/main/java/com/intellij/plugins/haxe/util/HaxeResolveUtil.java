@@ -77,17 +77,15 @@ public class HaxeResolveUtil {
     if (node == null) return null;
 
     PsiElement leftExpression = UsefulPsiTreeUtil.getFirstChildSkipWhiteSpacesAndComments(node);
-    PsiElement dotOrQuest = UsefulPsiTreeUtil.getNextSiblingSkipWhiteSpacesAndComments(leftExpression);
+    PsiElement dotOrQuestDot = UsefulPsiTreeUtil.getNextSiblingSkipWhiteSpacesAndComments(leftExpression);
 
 
-    if (null == dotOrQuest) {
+    if (null == dotOrQuestDot) {
       return  null;
     }
-    //  Null-safe navigation operator (?.) check
-    if (dotOrQuest.getNode().getElementType() == HaxeTokenTypes.OQUEST) {
-      dotOrQuest = UsefulPsiTreeUtil.getNextSiblingSkipWhiteSpacesAndComments(dotOrQuest);
-    }
-    if (null == dotOrQuest || dotOrQuest.getNode().getElementType() != HaxeTokenTypes.ODOT) {
+    //  Null-safe navigation operator (?.) / normal navigation operator(.) check
+    IElementType elementType = dotOrQuestDot.getNode().getElementType();
+    if (elementType != HaxeTokenTypes.ODOT &&  elementType != HaxeTokenTypes.OQUEST_DOT) {
       return null;
     }
 
@@ -268,7 +266,7 @@ public class HaxeResolveUtil {
 
   public static List<HaxeFieldDeclaration> getClassVarDeclarations(HaxeClass haxeClass) {
     PsiElement body = null;
-    final HaxeComponentType type = HaxeComponentType.typeOf(haxeClass);
+    final HaxeComponentType type = haxeClass.getComponentType();
     if (type == HaxeComponentType.CLASS) {
       body = PsiTreeUtil.getChildOfAnyType(haxeClass, HaxeClassBody.class, HaxeExternClassDeclarationBody.class);
     }
@@ -1244,18 +1242,22 @@ public class HaxeResolveUtil {
 
 
   private static @Nullable HaxeImportStatement searchImportStatementForExposedMember(String name, @NotNull List<HaxeImportStatement> importStatements) {
-    return importStatements.stream()
-            .filter(impStatement-> impStatement.getModel().exposeByName(name) != null)
-            .findFirst()
-            .orElse(null);
+      for (HaxeImportStatement impStatement : importStatements) {
+          if (impStatement.getModel().exposeByName(name) != null) {
+              return impStatement;
+          }
+      }
+      return null;
 
   }
 
   private static @Nullable HaxeUsingStatement searchUsingStatementForExposedMember(String name, List<HaxeUsingStatement>  usingStatements) {
-    return usingStatements.stream()
-            .filter(impStatement-> impStatement.getModel().exposeByName(name) != null)
-            .findFirst()
-            .orElse(null);
+      for (HaxeUsingStatement impStatement : usingStatements) {
+          if (impStatement.getModel().exposeByName(name) != null) {
+              return impStatement;
+          }
+      }
+      return null;
   }
 
 

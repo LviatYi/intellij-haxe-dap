@@ -42,7 +42,10 @@ public class ResultHolder {
 
   @NotNull
   private SpecificTypeReference type;
+  // NOTE: morph flag is used for typeParameters (prevent updating type)
+  // while mutate is used for final fields (prevent update assigned value)
   private boolean canMutate = true;
+  private boolean canMorph = true;
   private int mutationCount = 0;
 
 
@@ -220,16 +223,16 @@ public class ResultHolder {
     return duplicate;
   }
 
-  public  boolean containsTypeParameters() {
-    return containsTypeParameters(this);
+  public  boolean isOrContainsTypeParameters() {
+    return isOrContainsTypeParameters(this);
   }
-  public static boolean containsTypeParameters(ResultHolder holder) {
+  public static boolean isOrContainsTypeParameters(ResultHolder holder) {
     if (holder.isUnknown()) return  false;
     if (holder.isTypeParameter()) return true;
     SpecificTypeReference type = holder.getType();
     if (type instanceof  SpecificHaxeClassReference classReference) {
       for (ResultHolder specific : classReference.getSpecifics()) {
-        if (specific.type != type && containsTypeParameters(specific)) return  true;
+        if (specific.type != type && isOrContainsTypeParameters(specific)) return  true;
       }
     }
     if (type instanceof SpecificFunctionReference  function) {
@@ -245,9 +248,40 @@ public class ResultHolder {
     if(isUnknown()) return true;
     if(isFunctionType()) {
       return containsUnknownTypeParameters(this) || getFunctionType().containsUnknownTypes();
-    }else {
+    }else if(isTypeParameterWithConstraints()){
+        return !hasNoGenericsOrTheOnlyGenericTypeisItSelf(this);
+    }else{
       return containsUnknownTypeParameters(this);
     }
+  }
+  // in order to better cache results we check if unknown typeParameters are "self" references and if so we may cache the result (ex class Node<T:Node<T>)
+  private static boolean hasNoGenericsOrTheOnlyGenericTypeisItSelf(@NotNull ResultHolder type) {
+    return hasNoGenericsOrTheOnlyGenericTypeisItSelf(type, type);
+  }
+  public boolean hasNoGenericsOrTheOnlyGenericTypeisItSelf() {
+    return hasNoGenericsOrTheOnlyGenericTypeisItSelf(this);
+  }
+  private static boolean hasNoGenericsOrTheOnlyGenericTypeisItSelf(@NotNull ResultHolder selfType, @NotNull ResultHolder currentType) {
+    if (currentType.isUnknown()) return  false;
+    // plain typeParameter OK
+    if (currentType.isTypeParameter() && !currentType.isTypeParameterWithConstraints() ) return true;
+    if(currentType.isOrContainsTypeParameters()) {
+      SpecificTypeReference type = currentType.getType();
+      if (type instanceof SpecificHaxeClassReference classReference) {
+        for (ResultHolder specific : classReference.getSpecifics()) {
+          if (specific.isUnknown() || hasNoGenericsOrTheOnlyGenericTypeisItSelf(selfType, specific)) return true;
+        }
+      }
+      if (type instanceof SpecificFunctionReference function) {
+        List<ResultHolder> parameters = function.getTypeParameters();
+        for (ResultHolder parameter : parameters) {
+          if (parameter.isUnknown()) return true;
+        }
+      }
+      if(currentType.getType().isSameType(selfType.getType())) return true;
+    }
+
+    return true;
   }
   public static boolean containsUnknownTypeParameters(ResultHolder holder) {
     if (holder.isUnknown()) return  false;
@@ -310,5 +344,14 @@ public class ResultHolder {
   public PsiElement getContext() {
     return getType().context;
 
+  }
+
+
+  public boolean canMorph() {
+    return canMorph;
+  }
+
+  public void disableMorphing() {
+    canMorph = false;
   }
 }

@@ -48,7 +48,7 @@ public class HaxeSubtypesHierarchyTreeStructure extends HierarchyTreeStructure {
   }
 
   @NotNull
-  protected final Object[] buildChildren(@NotNull final HierarchyNodeDescriptor descriptor) {
+  protected final Object @NotNull [] buildChildren(@NotNull final HierarchyNodeDescriptor descriptor) {
 
     final HaxeClass theHaxeClass = ((HaxeTypeHierarchyNodeDescriptor) descriptor).getHaxeClass();
     if (null == theHaxeClass) return ArrayUtil.EMPTY_OBJECT_ARRAY;
@@ -84,7 +84,7 @@ public class HaxeSubtypesHierarchyTreeStructure extends HierarchyTreeStructure {
     if (!thisType.isValid()) return false;
     final String tcfqn = thisType.getQualifiedName();
     final String pscfqn = theSuperType.getQualifiedName();
-    if (pscfqn.equals(tcfqn)) return false; // it's the same class in LHS & RHS
+    if (pscfqn == null || pscfqn.equals(tcfqn)) return false; // it's the same class in LHS & RHS
     final ArrayList<PsiClass> allSuperTypes = getSuperTypesAsList(thisType);
     for (PsiClass aSuperType : allSuperTypes) {
       if (pscfqn.equals(aSuperType.getQualifiedName())) {
