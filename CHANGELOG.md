@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.0.3-beta
+
+* Changed: add support for exception crash when debugging.
+
+## 2.0.2-beta
+
 * Changed: clear buffer when debugger stop.
 * Changed: request focus when hit breakpoint.
 

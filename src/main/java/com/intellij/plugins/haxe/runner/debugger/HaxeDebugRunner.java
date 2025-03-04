@@ -34,7 +34,6 @@ import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.PluginManagerCore;
-import com.intellij.lang.ASTNode;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.extensions.PluginId;
@@ -1603,12 +1602,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           switch (dpt) {
             case BreakpointStop -> {
               this.info("Breakpoint stop.");
-              JFrame frame = WindowManager.getInstance().getFrame(project);
-              if (frame instanceof IdeFrame) {
-                frame.toFront();  // 让窗口前置（非最小化时）
-                frame.requestFocus(); // 请求焦点
-              }
-              this.checkRunToAndTraceStack();
+              this.checkRunToAndTraceStack(true);
             }
             case ExceptionStop -> {
               String msg = "";
@@ -1627,6 +1621,8 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               else {
                 this.info("Exception stop. Error message:" + message);
               }
+
+              this.checkRunToAndTraceStack(true);
             }
             case PauseStop -> {
               if (waitForPaused) {
@@ -1640,7 +1636,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               }
               else {
                 this.info("Pause stop for Breakpoint step.");
-                this.checkRunToAndTraceStack();
+                this.checkRunToAndTraceStack(false);
               }
             }
             case ThreadExit, ThreadStart -> {
@@ -1665,7 +1661,15 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
       }
     }
 
-    private void checkRunToAndTraceStack() {
+    private void checkRunToAndTraceStack(boolean getFocus) {
+      if (getFocus) {
+        JFrame frame = WindowManager.getInstance().getFrame(project);
+        if (frame instanceof IdeFrame) {
+          frame.toFront();  // 让窗口前置（非最小化时）
+          frame.requestFocus(); // 请求焦点
+        }
+      }
+      
       if (runToCursorPosition != null) {
         this.updateBreakpointByFileUrl(runToCursorPosition.getFile().getUrl());
         runToCursorPosition = null;
