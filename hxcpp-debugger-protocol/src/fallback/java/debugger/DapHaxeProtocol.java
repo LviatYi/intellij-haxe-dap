@@ -24,17 +24,11 @@ public class DapHaxeProtocol extends haxe.lang.HxObject {
   public static ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE).order(java.nio.ByteOrder.LITTLE_ENDIAN);
   public static int nextMessageLength = INVALID_MESSAGE_LENGTH;
 
+  private final static byte[] READ_MESSAGE_DATA_CACHE = new byte[BUFFER_SIZE];
+
   public DapHaxeProtocol(haxe.lang.EmptyObject empty) {
   }
-
-  public DapHaxeProtocol() {
-    //line 28 "C:\\HaxeToolkit\\haxe\\lib\\hxcpp-debugger\\git\\debugger\\HaxeProtocol.hx"
-    DapHaxeProtocol.__hx_ctor_debugger_HaxeProtocol(this);
-  }
-
-  protected static void __hx_ctor_debugger_HaxeProtocol(DapHaxeProtocol __hx_this) {
-  }
-
+  
   public static void appendBuffer(byte[] data, int length) {
     ensureCapacity(length);
     buffer.put(data, 0, length);
@@ -87,15 +81,14 @@ public class DapHaxeProtocol extends haxe.lang.HxObject {
 
   public static DapHaxeMessage readMessage(InputStream is) {
     try {
-      byte[] data = new byte[BUFFER_SIZE];
       int bytesRead;
       DapHaxeMessage message;
       if ((message = processData()) != null) {
         return message;
       }
 
-      while ((bytesRead = is.read(data)) != -1) {
-        appendBuffer(data, bytesRead);
+      while ((bytesRead = is.read(READ_MESSAGE_DATA_CACHE)) != -1) {
+        appendBuffer(READ_MESSAGE_DATA_CACHE, bytesRead);
         if ((message = processData()) != null) {
           return message;
         }

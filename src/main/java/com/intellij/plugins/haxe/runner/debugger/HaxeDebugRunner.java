@@ -1640,14 +1640,14 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               }
             }
             case ThreadExit, ThreadStart -> {
-              @SuppressWarnings("unchecked")
-              var m = (DapHaxeMessage<ThreadInfo, Object>)message;
-              if (m.params != null) {
-                var params = m.params;
-
-                var title = dpt == DebugProtocolTypes.ThreadExit ? "Thread exited. " : "Thread start. ";
-                this.info(title + "Thread: " + String.valueOf(params.threadId));
-              }
+              //@SuppressWarnings("unchecked")
+              //var m = (DapHaxeMessage<ThreadInfo, Object>)message;
+              //if (m.params != null) {
+              //  var params = m.params;
+              //
+              //  var title = dpt == DebugProtocolTypes.ThreadExit ? "Thread exited. " : "Thread start. ";
+              //  this.info(title + "Thread: " + String.valueOf(params.threadId));
+              //}
             }
             default -> {
               this.info("message: " + message);
@@ -1669,7 +1669,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           frame.requestFocus(); // 请求焦点
         }
       }
-      
+
       if (runToCursorPosition != null) {
         this.updateBreakpointByFileUrl(runToCursorPosition.getFile().getUrl());
         runToCursorPosition = null;
@@ -1722,7 +1722,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           if (!lineBreakpoint.isEnabled()) {
             continue;
           }
-          
+
           if (!lineBreakpoint.getFileUrl().equals(focusFileUrl)) {
             continue;
           }
