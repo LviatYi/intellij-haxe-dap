@@ -1931,23 +1931,31 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
             }
 
             PsiElement endElement = psiFile.findElementAt(offset);
-            if (endElement == null || !(endElement instanceof HaxePsiTokenImpl)) {
+            if (!(endElement instanceof HaxePsiTokenImpl)) {
               return null;
             }
 
             PsiElement wrapper = endElement.getParent();
             if (!(wrapper instanceof HaxeIdentifierImpl) ||
-                !((HaxeIdentifierImpl)wrapper).getTokenType().getDebugName().equals("IDENTIFIER")) {
+                !((HaxeIdentifierImpl)wrapper).getTokenType().equals(HaxeTokenTypes.IDENTIFIER)) {
               return null;
             }
 
-            PsiElement startElementWrapper = wrapper;
-            while (startElementWrapper.getPrevSibling() != null &&
-                   isIdentifierRelevantElement(startElementWrapper.getPrevSibling())) {
-              startElementWrapper = startElementWrapper.getPrevSibling();
+            PsiElement referenceExpression;
+            while (wrapper.getParent() != null) {
+              wrapper = wrapper.getParent();
+              if (wrapper instanceof HaxePsiCompositeElement &&
+                  ((HaxePsiCompositeElement)wrapper).getTokenType().equals(HaxeTokenTypes.REFERENCE_EXPRESSION)) {
+                var wrapperParent = (HaxePsiCompositeElement)wrapper.getParent();
+                if (wrapperParent != null && wrapperParent.getTokenType().equals(HaxeTokenTypes.CALL_EXPRESSION)) {
+                  return null;
+                }
+
+                return wrapper.getTextRange();
+              }
             }
 
-            return new TextRange(startElementWrapper.getTextOffset(), endElement.getTextOffset() + endElement.getTextLength());
+            return null;
           }
 
           private boolean isIdentifierRelevantElement(PsiElement element) {
@@ -1984,7 +1992,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         DapDebugProcess.this.<GetVariablesParam, ValInfo[]>expectResult(
           new DapHaxeCommand<>(DebugProtocolTypes.GetVariables, new GetVariablesParam(variableRef)),
           message -> {
-            XValueChildrenList childrenList = new XValueChildrenList();
+            childrenList = new XValueChildrenList();
             for (ValInfo val : message.result) {
               childrenList.add(val.name, new Value(val));
             }
@@ -2080,6 +2088,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
 
       private StackTraceInfo frameInfo;
       private XSourcePosition sourcePosition;
+      private XValueChildrenList childrenList;
       @Nullable private final PsiFile psiFile;
     }
 
