@@ -10,6 +10,7 @@
 
 * Changed: clear buffer when debugger stop.
 * Changed: request focus when hit breakpoint.
+* Changed: optimize the location of automatic imports. Avoid adding them to any macros.
 
 ## 2.0.1-alpha
 
