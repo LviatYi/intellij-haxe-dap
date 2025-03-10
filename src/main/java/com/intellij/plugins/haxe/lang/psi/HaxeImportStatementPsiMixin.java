@@ -16,9 +16,12 @@
 package com.intellij.plugins.haxe.lang.psi;
 
 import com.intellij.plugins.haxe.model.HaxeImportModel;
+import com.intellij.psi.PsiElement;
 import org.jetbrains.annotations.NotNull;
 
 public interface HaxeImportStatementPsiMixin extends HaxeStatementPsiMixin {
   @NotNull
   HaxeImportModel getModel();
+
+  Boolean isInsideMacro();
 }

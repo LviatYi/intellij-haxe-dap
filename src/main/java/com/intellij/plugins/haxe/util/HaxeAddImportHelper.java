@@ -37,7 +37,8 @@ import java.util.List;
 public class HaxeAddImportHelper {
   public static HaxeImportStatement addImport(String path, PsiFile file) {
     PsiElement child = PsiTreeUtil.findChildOfType(file, HaxePackageStatement.class);
-    List<HaxeImportStatement> importStatements = PsiTreeUtil.findChildrenOfType(file, HaxeImportStatement.class).stream().toList();
+    List<HaxeImportStatement> importStatements =
+      PsiTreeUtil.findChildrenOfType(file, HaxeImportStatement.class).stream().filter(item -> !item.isInsideMacro()).toList();
     if(!importStatements.isEmpty()) {
       child = importStatements.get(importStatements.size()-1);
     }
