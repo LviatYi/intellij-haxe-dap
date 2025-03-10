@@ -1,5 +1,6 @@
 package debugger;
 
+import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,6 +23,8 @@ public class DapHaxeMessage<PT, RT> {
   @Nullable public RT result;
   @Nullable public DapHaxeMessageError error;
 
+  private static final Gson gsonCache = new com.google.gson.Gson();
+
   public DapHaxeMessage(int id, String method) {
     this(id, method, null, null, null);
   }
@@ -43,32 +46,37 @@ public class DapHaxeMessage<PT, RT> {
   }
 
   public static DapHaxeMessage fromBytes(byte[] bytes) {
-    var gson = new com.google.gson.Gson();
-    var pm = gson.fromJson(new String(bytes, StandardCharsets.UTF_8), DapHaxePlainMessage.class);
+    final int SIZE_THRESHOLD = 1024 * 10;
+    if (bytes.length > SIZE_THRESHOLD) {
+      System.out.println("Lviat Warning: DapHaxeMessage.fromBytes: bytes.length > SIZE_THRESHOLD. bytes.length=" + bytes.length);
+      System.out.println("Lviat Warning: DapHaxeMessage.fromBytes: bytes content=" + new String(bytes));
+    }
+
+    var pm = gsonCache.fromJson(new String(bytes, StandardCharsets.UTF_8), DapHaxePlainMessage.class);
     var m = new DapHaxeMessage(pm.id, pm.method);
 
     switch (DebugProtocolTypes.fromString(pm.method)) {
       case StackTrace:
-        m.result = gson.fromJson(pm.result, StackTraceInfo[].class);
+        m.result = gsonCache.fromJson(pm.result, StackTraceInfo[].class);
         break;
       case SetBreakpoints:
-        m.result = gson.fromJson(pm.result, Integer[].class);
+        m.result = gsonCache.fromJson(pm.result, Integer[].class);
         break;
       case ThreadStart:
       case ThreadExit:
-        m.params = gson.fromJson(pm.params, ThreadInfo.class);
+        //m.params = gsonCache.fromJson(pm.params, ThreadInfo.class);
         break;
       case GetScopes:
-        m.result = gson.fromJson(pm.result, ScopeInfo[].class);
+        m.result = gsonCache.fromJson(pm.result, ScopeInfo[].class);
         break;
       case GetVariables:
-        m.result = gson.fromJson(pm.result, ValInfo[].class);
+        m.result = gsonCache.fromJson(pm.result, ValInfo[].class);
         break;
       case Evaluate:
-        m.result = gson.fromJson(pm.result, ValInfo.class);
+        m.result = gsonCache.fromJson(pm.result, ValInfo.class);
         break;
       case ExceptionStop:
-        m.params = gson.fromJson(pm.params, ExceptionInfo.class);
+        m.params = gsonCache.fromJson(pm.params, ExceptionInfo.class);
         break;
       case Pause:
       case Continue:
@@ -97,7 +105,7 @@ public class DapHaxeMessage<PT, RT> {
     }
 
     if (pm.error != null) {
-      m.error = gson.fromJson(pm.error, DapHaxeMessageError.class);
+      m.error = gsonCache.fromJson(pm.error, DapHaxeMessageError.class);
     }
 
     return m;

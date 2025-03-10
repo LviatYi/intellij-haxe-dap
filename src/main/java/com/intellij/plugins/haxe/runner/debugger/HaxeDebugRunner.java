@@ -61,19 +61,17 @@ import com.intellij.plugins.haxe.config.NMETarget;
 import com.intellij.plugins.haxe.config.OpenFLTarget;
 import com.intellij.plugins.haxe.haxelib.HaxelibClasspathUtils;
 import com.intellij.plugins.haxe.ide.module.HaxeModuleSettings;
-import com.intellij.plugins.haxe.lang.psi.HaxeIdentifier;
+import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypes;
+import com.intellij.plugins.haxe.lang.psi.HaxePsiCompositeElement;
 import com.intellij.plugins.haxe.lang.psi.HaxeReferenceExpression;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxeIdentifierImpl;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxePsiTokenImpl;
-import com.intellij.plugins.haxe.lang.psi.impl.HaxeReferenceExpressionImpl;
 import com.intellij.plugins.haxe.runner.DirectRunningState;
 import com.intellij.plugins.haxe.runner.HaxeApplicationConfiguration;
 import com.intellij.plugins.haxe.runner.OpenFLRunningState;
 import com.intellij.plugins.haxe.util.HaxeFileUtil;
 import com.intellij.plugins.haxe.util.HaxeResolveUtil;
 import com.intellij.psi.*;
-import com.intellij.psi.impl.source.tree.CompositeElement;
-import com.intellij.psi.impl.source.tree.TreeElement;
 import com.intellij.psi.search.FilenameIndex;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.ui.ColoredTextContainer;
@@ -92,11 +90,12 @@ import debugger.*;
 import haxe.root.JavaProtocol;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.mozilla.javascript.ast.AstNode;
-
 import javax.swing.*;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.BindException;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -1401,7 +1400,33 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
       this.project = project;
       this.module = module;
       deferredQueue = new LinkedList<>();
-      serverSocket = new java.net.ServerSocket(port);
+      try {
+        serverSocket = new java.net.ServerSocket(port);
+      }
+      catch (BindException e) {
+        throw new  BindException("Port " + port + " is already in use.");
+        //System.err.println("Port " + port + " is already in use. Trying to force kill...");
+        //try {
+        //  Process p = Runtime.getRuntime().exec("netstat -ano | findstr :" + port);
+        //  BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+        //  String line;
+        //  while ((line = reader.readLine()) != null) {
+        //    if (line.trim().length() > 0) {
+        //      String[] tokens = line.trim().split("\\s+");
+        //      String pid = tokens[tokens.length - 1];
+        //
+        //      Process kill = Runtime.getRuntime().exec("taskkill /PID " + pid + " /F");
+        //      kill.waitFor();
+        //      System.out.println("Killed process with PID: " + pid);
+        //    }
+        //  }
+        //}
+        //catch (IOException | InterruptedException ex) {
+        //  ex.printStackTrace();
+        //}
+        //
+        //serverSocket = new java.net.ServerSocket(port);
+      }
       breakpointHandlers = this.createBreakpointHandlers();
       callbacks = new HashMap<Integer, DapHaxeProtocol.CommandCallback>();
       writeQueue = QueueProcessor.createRunnableQueueProcessor(QueueProcessor.ThreadToUse.POOLED);
@@ -1641,14 +1666,14 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               }
             }
             case ThreadExit, ThreadStart -> {
-              @SuppressWarnings("unchecked")
-              var m = (DapHaxeMessage<ThreadInfo, Object>)message;
-              if (m.params != null) {
-                var params = m.params;
-
-                var title = dpt == DebugProtocolTypes.ThreadExit ? "Thread exited. " : "Thread start. ";
-                this.info(title + "Thread: " + String.valueOf(params.threadId));
-              }
+              //@SuppressWarnings("unchecked")
+              //var m = (DapHaxeMessage<ThreadInfo, Object>)message;
+              //if (m.params != null) {
+              //  var params = m.params;
+              //
+              //  var title = dpt == DebugProtocolTypes.ThreadExit ? "Thread exited. " : "Thread start. ";
+              //  this.info(title + "Thread: " + String.valueOf(params.threadId));
+              //}
             }
             default -> {
               this.info("message: " + message);
@@ -1670,7 +1695,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           frame.requestFocus(); // 请求焦点
         }
       }
-      
+
       if (runToCursorPosition != null) {
         this.updateBreakpointByFileUrl(runToCursorPosition.getFile().getUrl());
         runToCursorPosition = null;
@@ -1723,7 +1748,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           if (!lineBreakpoint.isEnabled()) {
             continue;
           }
-          
+
           if (!lineBreakpoint.getFileUrl().equals(focusFileUrl)) {
             continue;
           }
@@ -1858,6 +1883,13 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         }
 
         sourcePosition = XSourcePositionImpl.create(file, frameInfo.line - 1);
+
+        if (null != file) {
+          psiFile = PsiManager.getInstance(project).findFile(file);
+        }
+        else {
+          psiFile = null;
+        }
       }
 
       public Object getEqualityObject() {
@@ -1872,6 +1904,11 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               return;
             }
 
+            PsiFile curPsiFile = PsiManager.getInstance(project).findFile(sourcePosition.getFile());
+            if (curPsiFile == null) {
+              callback.errorOccurred("Cannot evaluate expression: " + expression);
+              return;
+            }
             DapDebugProcess.this.<EvaluateParam, ValInfo>expectResult(
               new DapHaxeCommand<>(DebugProtocolTypes.Evaluate, new EvaluateParam(expression, frameInfo.id)),
               message -> {
@@ -1889,29 +1926,37 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                                                                 Document document,
                                                                 int offset,
                                                                 boolean sideEffectsAllowed) {
-            PsiFile psiFile = PsiDocumentManager.getInstance(project).getPsiFile(document);
-            if (psiFile == null) {
+            PsiFile curPsiFile = PsiDocumentManager.getInstance(project).getPsiFile(document);
+            if (psiFile == null || curPsiFile == null || curPsiFile != psiFile) {
               return null;
             }
 
             PsiElement endElement = psiFile.findElementAt(offset);
-            if (endElement == null || !(endElement instanceof HaxePsiTokenImpl)) {
+            if (!(endElement instanceof HaxePsiTokenImpl)) {
               return null;
             }
 
             PsiElement wrapper = endElement.getParent();
             if (!(wrapper instanceof HaxeIdentifierImpl) ||
-                !((HaxeIdentifierImpl)wrapper).getTokenType().getDebugName().equals("IDENTIFIER")) {
+                !((HaxeIdentifierImpl)wrapper).getTokenType().equals(HaxeTokenTypes.IDENTIFIER)) {
               return null;
             }
 
-            PsiElement startElementWrapper = wrapper;
-            while (startElementWrapper.getPrevSibling() != null &&
-                   isIdentifierRelevantElement(startElementWrapper.getPrevSibling())) {
-              startElementWrapper = startElementWrapper.getPrevSibling();
+            PsiElement referenceExpression;
+            while (wrapper.getParent() != null) {
+              wrapper = wrapper.getParent();
+              if (wrapper instanceof HaxePsiCompositeElement &&
+                  ((HaxePsiCompositeElement)wrapper).getTokenType().equals(HaxeTokenTypes.REFERENCE_EXPRESSION)) {
+                var wrapperParent = (HaxePsiCompositeElement)wrapper.getParent();
+                if (wrapperParent != null && wrapperParent.getTokenType().equals(HaxeTokenTypes.CALL_EXPRESSION)) {
+                  return null;
+                }
+
+                return wrapper.getTextRange();
+              }
             }
 
-            return new TextRange(startElementWrapper.getTextOffset(), endElement.getTextOffset() + endElement.getTextLength());
+            return null;
           }
 
           private boolean isIdentifierRelevantElement(PsiElement element) {
@@ -1948,7 +1993,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         DapDebugProcess.this.<GetVariablesParam, ValInfo[]>expectResult(
           new DapHaxeCommand<>(DebugProtocolTypes.GetVariables, new GetVariablesParam(variableRef)),
           message -> {
-            XValueChildrenList childrenList = new XValueChildrenList();
+            childrenList = new XValueChildrenList();
             for (ValInfo val : message.result) {
               childrenList.add(val.name, new Value(val));
             }
@@ -2044,6 +2089,8 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
 
       private StackTraceInfo frameInfo;
       private XSourcePosition sourcePosition;
+      private XValueChildrenList childrenList;
+      @Nullable private final PsiFile psiFile;
     }
 
     private final Project project;
