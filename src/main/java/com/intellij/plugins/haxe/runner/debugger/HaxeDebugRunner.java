@@ -1882,6 +1882,13 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         }
 
         sourcePosition = XSourcePositionImpl.create(file, frameInfo.line - 1);
+
+        if (null != file) {
+          psiFile = PsiManager.getInstance(project).findFile(file);
+        }
+        else {
+          psiFile = null;
+        }
       }
 
       public Object getEqualityObject() {
@@ -1896,6 +1903,11 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               return;
             }
 
+            PsiFile curPsiFile = PsiManager.getInstance(project).findFile(sourcePosition.getFile());
+            if (curPsiFile == null) {
+              callback.errorOccurred("Cannot evaluate expression: " + expression);
+              return;
+            }
             DapDebugProcess.this.<EvaluateParam, ValInfo>expectResult(
               new DapHaxeCommand<>(DebugProtocolTypes.Evaluate, new EvaluateParam(expression, frameInfo.id)),
               message -> {
@@ -1913,8 +1925,8 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                                                                 Document document,
                                                                 int offset,
                                                                 boolean sideEffectsAllowed) {
-            PsiFile psiFile = PsiDocumentManager.getInstance(project).getPsiFile(document);
-            if (psiFile == null) {
+            PsiFile curPsiFile = PsiDocumentManager.getInstance(project).getPsiFile(document);
+            if (psiFile == null || curPsiFile == null || curPsiFile != psiFile) {
               return null;
             }
 
@@ -2068,6 +2080,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
 
       private StackTraceInfo frameInfo;
       private XSourcePosition sourcePosition;
+      @Nullable private final PsiFile psiFile;
     }
 
     private final Project project;

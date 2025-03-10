@@ -3,6 +3,7 @@
 ## Unreleased
 
 * Changed: report specific occupied ports.
+* Changed: add psi file check to filter out evaluators that are inconsistent with the stack frame file.
 
 ## 2.0.3-beta
 
