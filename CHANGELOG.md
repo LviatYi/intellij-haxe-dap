@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.4-beta
+
 * Changed: optimize the location of automatic imports. Avoid adding them to any macros.
 * Changed: report specific occupied ports.
 * Changed: add psi file check to filter out evaluators that are inconsistent with the stack frame file.
