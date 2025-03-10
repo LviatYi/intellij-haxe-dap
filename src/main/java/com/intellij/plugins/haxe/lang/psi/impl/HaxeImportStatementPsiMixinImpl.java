@@ -21,9 +21,14 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.util.Computable;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.model.HaxeImportModel;
+import com.intellij.psi.PsiComment;
+import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiElementVisitor;
+import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 
 public abstract class HaxeImportStatementPsiMixinImpl extends HaxeStatementPsiMixinImpl implements HaxeImportStatement {
@@ -88,5 +93,31 @@ public abstract class HaxeImportStatementPsiMixinImpl extends HaxeStatementPsiMi
       text = ApplicationManager.getApplication().runReadAction((Computable<String>)this::getText);
     }
     return Objects.hash(text);
+  }
+
+  @Override
+  public Boolean isInsideMacro() {
+    PsiElement root = this.getParent();
+    PsiElement ancestor = this;
+    while (!(root instanceof HaxeFile)) {
+      ancestor = root;
+      root = root.getParent();
+    }
+    
+    List<@NotNull PsiElement> brothers = Arrays.stream(root.getChildren()).toList();
+    int ancestorIndex = brothers.indexOf(ancestor);
+    for (int i = 0; i < ancestorIndex; i++) {
+      PsiElement brother = brothers.get(i);
+      if (brother instanceof PsiComment) {
+        if (brother.getText().equals("#end")) {
+          return false;
+        }
+        else if (brother.getText().equals("#if")) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
   }
 }
