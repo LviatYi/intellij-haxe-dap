@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.4-beta
+
 * Changed: Merge Intellij-Haxe 1.6.0 into this repo.
 * Changed: optimize the location of automatic imports. Avoid adding them to any macros.
 * Changed: report specific occupied ports.
