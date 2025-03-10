@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* Changed: optimize the location of automatic imports. Avoid adding them to any macros.
+
 ## 2.0.3-beta
 
 * Changed: add support for exception crash when debugging.
@@ -10,7 +12,6 @@
 
 * Changed: clear buffer when debugger stop.
 * Changed: request focus when hit breakpoint.
-* Changed: optimize the location of automatic imports. Avoid adding them to any macros.
 
 ## 2.0.1-alpha
 
