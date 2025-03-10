@@ -2078,7 +2078,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
   }
 
   private static void showInfoMessage(final Project project, final String message, final String title) {
-    System.out.println(title + ": " + message);
+    //System.out.println(title + ": " + message);
     ApplicationManager.getApplication().invokeLater(new Runnable() {
       @Override
       public void run() {
