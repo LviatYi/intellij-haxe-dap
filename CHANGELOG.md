@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* Changed: report specific occupied ports.
+
 ## 2.0.3-beta
 
 * Changed: add support for exception crash when debugging.
