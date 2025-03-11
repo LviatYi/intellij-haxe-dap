@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+* Changed: Merge Intellij-Haxe 1.6.3 into this repo.
 * Changed: optimize the evaluator of static variables.
 * Changed: optimize the evaluator of identifiers in declaration statements.
 
@@ -32,28 +33,33 @@
 
 * Changed: add support for HXCPP driven by Debug Adapter Protocol (DAP) for debugging.
 
+## 1.6.3
+* Added: Support for code folding for switch expressions, arrays, maps and object literals.
+* Changed: formatter now removes spaces between expressions and semicolons
+* bugfix: Fixed error when trying to insert typeTag for objectLiterals
+* bugfix: Fixed incorrect priority in parser (ternaryExpressions must be parsed before coalescingExpressions)
+
 ## 1.6.2
-* Added: Null coalescing annotations (#1208)
-* Fixed: Another constraint refers to owning typeParameter issue
+* Added: Null coalescing annotations (#1208) 
+* Fixed: Another constraint refers to owning typeParameter issue  
 * Fixed: Unreliable type resolve when resolving local variables with type parameters.
 * Bugfix: Methods with @:noUsing was treated as extension methods
 * Improvement: types in Inlays are now navigatable (ctrl click)
-* Improvement: Performance Tweaks
+* Improvement: Performance Tweaks 
 
 ## 1.6.1
 * Lots of minor bugfixes (mostly corner cases causing wrong annotations)
-
 ## 1.6.0
 This release is a major rework of type and method compatibility logic.
 Lots of old hacks and workarounds removed and hopefully this release will improve performance
-and do more correct type checking.
+and do more correct type checking.  
 
 known issues:
-- calling bind() on functions does not return correct function type
-- some patterns used in match() calls on enums will be marked as error
-- completion suggestions contains duplicates & unexpected values
-- typechecking for operator overloads are missing.
-- Shadowing classes might cause incorrect type compatibility annotations.
+ - calling bind() on functions does not return correct function type
+ - some patterns used in match() calls on enums will be marked as error 
+ - completion suggestions contains duplicates & unexpected values
+ - typechecking for operator overloads are missing.  
+ - Shadowing classes might cause incorrect type compatibility annotations.
 
 ## 1.5.13
 * Bugfix: Fixed issue where Auto-reload project on changes could end up in an infinite loop. (#1197)
