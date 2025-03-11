@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.5(1.6b)
+
 * Changed: Merge Intellij-Haxe 1.6.3 into this repo.
 * Changed: optimize the evaluator of static variables.
 * Changed: optimize the evaluator of identifiers in declaration statements.
