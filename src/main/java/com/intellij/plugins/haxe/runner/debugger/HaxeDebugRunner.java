@@ -62,6 +62,7 @@ import com.intellij.plugins.haxe.config.OpenFLTarget;
 import com.intellij.plugins.haxe.haxelib.HaxelibClasspathUtils;
 import com.intellij.plugins.haxe.ide.module.HaxeModuleSettings;
 import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypes;
+import com.intellij.plugins.haxe.lang.psi.HaxeFieldDeclaration;
 import com.intellij.plugins.haxe.lang.psi.HaxePsiCompositeElement;
 import com.intellij.plugins.haxe.lang.psi.HaxeReferenceExpression;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxeIdentifierImpl;
@@ -88,12 +89,11 @@ import com.intellij.xdebugger.impl.XSourcePositionImpl;
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl;
 import debugger.*;
 import haxe.root.JavaProtocol;
+import org.apache.commons.collections.map.HashedMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.BindException;
 import java.util.*;
@@ -1909,6 +1909,37 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               callback.errorOccurred("Cannot evaluate expression: " + expression);
               return;
             }
+            
+            PsiElement originElement = curPsiFile.findElementAt(expressionPosition.getOffset() + expression.length() - 1);
+            if (originElement != null) {
+              PsiElement p = originElement.getParent();
+              while (p != null) {
+                if (p instanceof HaxeReferenceExpression) {
+                  var resolve = ((HaxeReferenceExpression)p).resolve();
+                  if (!(resolve instanceof HaxeFieldDeclaration declaration)) {
+                    break;
+                  }
+
+                  var modifierList = declaration.getModifierList();
+                  if (modifierList != null && modifierList.hasModifierProperty("static")) {
+                    var expr = "static " + originElement.getText();
+                    for (XValueChildrenList list : StackFrame.this.xvalueChildrenMap.values()) {
+                      for (int i = 0; i < list.size(); i++) {
+                        if (list.getName(i).equals(expr)) {
+                          callback.evaluated(list.getValue(i));
+                          return;
+                        }
+                      }
+                    }
+
+                    break;
+                  }
+                }
+
+                p = p.getParent();
+              }
+            }
+            
             DapDebugProcess.this.<EvaluateParam, ValInfo>expectResult(
               new DapHaxeCommand<>(DebugProtocolTypes.Evaluate, new EvaluateParam(expression, frameInfo.id)),
               message -> {
@@ -1983,22 +2014,26 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         DapDebugProcess.this.<GetScopeParam, ScopeInfo[]>expectResult(
           new DapHaxeCommand<>(DebugProtocolTypes.GetScopes, new GetScopeParam(this.frameInfo.id)),
           message -> {
-            for (var scope : message.result) {
-              this.computeChildrenCurrentFrame(node, scope.id);
+            if (message.result != null) {
+              for (var scope : message.result) {
+                this.computeChildrenCurrentFrame(node, scope.id);
+              }
             }
           });
       }
 
       private void computeChildrenCurrentFrame(@NotNull final XCompositeNode node, int variableRef) {
+        xvalueChildrenMap.put(variableRef, new XValueChildrenList());
         DapDebugProcess.this.<GetVariablesParam, ValInfo[]>expectResult(
           new DapHaxeCommand<>(DebugProtocolTypes.GetVariables, new GetVariablesParam(variableRef)),
           message -> {
-            childrenList = new XValueChildrenList();
-            for (ValInfo val : message.result) {
-              childrenList.add(val.name, new Value(val));
+            if (message.result != null) {
+              var list = xvalueChildrenMap.get(variableRef);
+              for (ValInfo val : message.result) {
+                list.add(val.name, new Value(val));
+              }
+              node.addChildren(list, true);
             }
-
-            node.addChildren(childrenList, true);
           });
       }
 
@@ -2089,7 +2124,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
 
       private StackTraceInfo frameInfo;
       private XSourcePosition sourcePosition;
-      private XValueChildrenList childrenList;
+      private final Map<Integer, XValueChildrenList> xvalueChildrenMap = new HashedMap();
       @Nullable private final PsiFile psiFile;
     }
 
