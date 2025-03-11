@@ -299,7 +299,7 @@ tasks {
 
     buildPlugin {
         val oldName = archiveBaseName.get() + "-" + archiveVersion.get() + ".zip"
-        val newName = "intellij-haxe-" + properties("platformVersion").get() + ".zip"
+        val newName = "intellij-haxe" + "-v" + properties("pluginVersion").get() + "(" + properties("platformVersion").get() + ")" + ".zip"
 
         outputs.upToDateWhen {
             file("${project.rootDir}/" + newName).exists()
