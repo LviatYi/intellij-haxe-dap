@@ -5,6 +5,7 @@
 * Changed: report specific occupied ports.
 * Changed: add psi file check to filter out evaluators that are inconsistent with the stack frame file.
 * Changed: optimizing the evaluator of member variables.
+* Changed: optimizing the evaluator of static variables.
 
 ## 2.0.3-beta
 
