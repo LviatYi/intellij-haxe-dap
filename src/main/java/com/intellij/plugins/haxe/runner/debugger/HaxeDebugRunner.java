@@ -61,6 +61,7 @@ import com.intellij.plugins.haxe.config.OpenFLTarget;
 import com.intellij.plugins.haxe.haxelib.HaxelibClasspathUtils;
 import com.intellij.plugins.haxe.ide.module.HaxeModuleSettings;
 import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypes;
+import com.intellij.plugins.haxe.lang.psi.HaxeComponentName;
 import com.intellij.plugins.haxe.lang.psi.HaxeFieldDeclaration;
 import com.intellij.plugins.haxe.lang.psi.HaxePsiCompositeElement;
 import com.intellij.plugins.haxe.lang.psi.HaxeReferenceExpression;
@@ -1967,12 +1968,11 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
             }
 
             PsiElement wrapper = endElement.getParent();
-            if (!(wrapper instanceof HaxeIdentifierImpl) ||
-                !((HaxeIdentifierImpl)wrapper).getTokenType().equals(HaxeTokenTypes.IDENTIFIER)) {
+            if (!(wrapper instanceof HaxePsiCompositeElement) ||
+                !((HaxePsiCompositeElement)wrapper).getTokenType().equals(HaxeTokenTypes.IDENTIFIER)) {
               return null;
             }
 
-            PsiElement referenceExpression;
             while (wrapper.getParent() != null) {
               wrapper = wrapper.getParent();
               if (wrapper instanceof HaxePsiCompositeElement &&
@@ -1982,6 +1982,9 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                   return null;
                 }
 
+                return wrapper.getTextRange();
+              }
+              if (wrapper instanceof HaxeComponentName) {
                 return wrapper.getTextRange();
               }
             }
