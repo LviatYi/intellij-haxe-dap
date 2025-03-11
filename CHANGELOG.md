@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 2.0.5-beta
+## 2.0.5(1.5b)
 
 * Changed: optimize the evaluator of static variables.
 * Changed: optimize the evaluator of identifiers in declaration statements.
