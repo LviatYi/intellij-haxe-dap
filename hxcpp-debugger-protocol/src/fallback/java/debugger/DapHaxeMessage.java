@@ -78,6 +78,9 @@ public class DapHaxeMessage<PT, RT> {
       case ExceptionStop:
         m.params = gsonCache.fromJson(pm.params, ExceptionInfo.class);
         break;
+      case SetVariable:
+        m.result = gsonCache.fromJson(pm.result, SetVariableResult.class);
+        break;
       case Pause:
       case Continue:
       case StepIn:
@@ -86,7 +89,6 @@ public class DapHaxeMessage<PT, RT> {
       case SetBreakpoint:
       case RemoveBreakpoint:
       case SwitchFrame:
-      case SetVariable:
       case Threads:
       case Completions:
       case SetExceptionOptions:

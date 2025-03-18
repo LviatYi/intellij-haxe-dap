@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 2.0.6(1.5b)
+
+* Changed: add support for change value when debugging.
+
 ## 2.0.5(1.5b)
 
 * Changed: optimize the evaluator of static variables.
