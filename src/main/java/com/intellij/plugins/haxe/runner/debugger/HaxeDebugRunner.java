@@ -1992,19 +1992,6 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
 
             return null;
           }
-
-          private boolean isIdentifierRelevantElement(PsiElement element) {
-            if (element instanceof HaxePsiTokenImpl) {
-              String text = element.getText();
-              return text.equals(".");
-            }
-            else if (element instanceof HaxeReferenceExpression) {
-              String text = element.getText();
-              return text.matches("[a-zA-Z_][a-zA-Z0-9_]*");
-            }
-
-            return false;
-          }
         };
       }
 
@@ -2099,11 +2086,14 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           return new XValueModifier() {
             @Override
             public void setValue(@NotNull XExpression expression, @NotNull XModificationCallback callback) {
-              DapDebugProcess.this.<SetVariableParam, ValInfo>expectResult(
+              DapDebugProcess.this.<SetVariableParam, SetVariableResult>expectResult(
                 new DapHaxeCommand<>(DebugProtocolTypes.SetVariable,
                                      new SetVariableParam(Value.this.valInfo.name, expression.getExpression())),
                 message -> {
-                  if (Objects.equals(message.result.value, NON_EXIST_VALUE)) {
+                  if (message.result == null) {
+                    callback.errorOccurred("Failed to set value of " + valInfo.name);
+                  }
+                  else if (Objects.equals(message.result.value, NON_EXIST_VALUE)) {
                     callback.errorOccurred("Failed to set value of " + valInfo.name + ". Value not exist.");
                   }
                   else {
