@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 2.0.7(1.6b)
+
+* Changed: Merge Intellij-Haxe 1.6.4 into this repo.
+
 ## 2.0.6(1.6b)
 
 * Changed: add support for change value when debugging.
