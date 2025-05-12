@@ -19,12 +19,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.intellij.plugins.haxe.model.evaluator.assign.HaxeTypeCompatible.evaluateAssignToFrom;
-import static com.intellij.plugins.haxe.model.evaluator.assign.HaxeTypeCompatible.evaluateAssignToFromForNewAndCallExpression;
+import static com.intellij.plugins.haxe.model.evaluator.assign.HaxeTypeCompatible.*;
 
 public class HaxeCallExpressionContext {
 
     private static final RecursionGuard<RecursionKey> canAssignRecursionGuard = RecursionManager.createGuard("canAssignRecursionGuard");
+    // enumValue.Match allows patterns and have different rules
+    public boolean isEnumValueMatchCallExpression;
+    public boolean isInEnumValueMatchArgument;
+    public boolean isEnumConstructor;
     public boolean isBindCall;
 
 
@@ -107,6 +110,18 @@ public class HaxeCallExpressionContext {
         int maxArgAllowed = hasRestParam && !isBindCall ? Integer.MAX_VALUE : parameters.size() - (firstArgIsThisReference ? 1 : 0);
         int argumentCount = arguments.size();
 
+        boolean hasOptionalParams = parameters.stream().anyMatch(CallExpressionParameterModel::isOptional);
+
+        if(isEnumValueMatchCallExpression) {
+            return EnumValueMatchUtil.evaluateMatchCall(this, evaluation, trackErrors);
+        }
+        if(isEnumConstructor) {
+          if(isInEnumValueMatchArgument) {
+              return EnumValueMatchUtil.evaluatePatterns(this, evaluation, trackErrors);
+          }else {
+              EnumValueMatchUtil.checkPatternMatchingOutsideMatchFunction(this, evaluation,  trackErrors);;
+          }
+        }
 
         // min arg check
         if (argumentCount < minArgRequired && !isBindCall) {
@@ -159,12 +174,16 @@ public class HaxeCallExpressionContext {
                     evaluation.addError("Extension methods require at least one parameter", sourceExpression);
                 return evaluation.validationFailed();
             }
-            SpecificTypeReference expectedCallieType = parameters.get(parameterCounter++).getType();
+            SpecificTypeReference expectedCallieType = parameters.getFirst().getType();
             if (!expectedCallieType.canAssign(callie)) {
                 // todo better error message, use bundle and show types
                 if (trackErrors) evaluation.addError("Can not use extension method, wrong type", sourceExpression);
                 return evaluation.validationFailed();
             }
+            // while it might be a waste to re-evaluate the callie assignability
+            // we do it  here because we need to keep track if typeParameters
+            // perhaps the logic above can be moved down into the argument/parameter check loop
+            arguments.addFirst(new CallExpressionArgumentModel(callie.context, callie));
         }
 
         CallExpressionArgumentModel argumentModel = null;
@@ -208,7 +227,7 @@ public class HaxeCallExpressionContext {
                                     argumentType,
                                     parameterType,
                                     assignEvaluation.explanations,
-                                    argumentModel.psiElement);
+                                    argumentModel.psiElement, hasOptionalParams);
                         }
                         return evaluation.validationFailed();
                     }
@@ -268,7 +287,7 @@ public class HaxeCallExpressionContext {
                                 argumentType,
                                 parameterType,
                                 assignEvaluation.explanations,
-                                argumentModel.psiElement);
+                                argumentModel.psiElement, false);
                     }
                 }
                 evaluation.validationFailed();
@@ -281,6 +300,9 @@ public class HaxeCallExpressionContext {
         evaluation.setCompleted(true);
         return evaluation;
     }
+
+
+
 
 
 
@@ -484,7 +506,7 @@ public class HaxeCallExpressionContext {
         return parametersList.getLast().isRest();
     }
 
-    private static int countRequiredArguments(List<CallExpressionParameterModel> parametersList) {
+    public static int countRequiredArguments(List<CallExpressionParameterModel> parametersList) {
         return (int) parametersList.stream()
                 .filter(p -> !p.isOptional() && !p.hasIntiValue() && !p.isRest())
                 .count();
@@ -500,7 +522,8 @@ public class HaxeCallExpressionContext {
                                       SpecificTypeReference argumentType,
                                       SpecificTypeReference parameterType,
                                       AssignExplanation explanation,
-                                      PsiElement argumentPsi
+                                      PsiElement argumentPsi,
+                                      boolean outOfParameters
     ) {
         if (explanation != null && argumentPsi != null) {
             TextRange expectedRange = argumentPsi.getTextRange();
@@ -526,6 +549,16 @@ public class HaxeCallExpressionContext {
                 String missingModel = explanation.getMissingModel().getFirst();
                 String message = HaxeBundle.message("haxe.semantic.method.parameter.type.not.found", missingModel);
                 evaluation.addWarning(message, expectedRange);
+            }else if (outOfParameters) {
+                String message = HaxeBundle.message("haxe.semantic.method.parameter.no.match",
+                        argumentType.toPresentationString(true));
+                evaluation.addError(message, expectedRange);
+
+            }else if(isShadowingType(parameterType, argumentType)) {
+                String message = HaxeBundle.message("haxe.semantic.incompatible.type.shadowing",
+                        parameterType.toPresentationString(true),
+                        argumentType.toPresentationString(true));
+                evaluation.addWarning(message, expectedRange);
             }else {
                 String message = HaxeBundle.message("haxe.semantic.method.parameter.mismatch",
                         parameterType.toPresentationString(true),
@@ -538,7 +571,7 @@ public class HaxeCallExpressionContext {
 
 
 
-    private void addToFewArgumentError(HaxeCallExpressionEvaluation evaluation, int minArgRequired) {
+    protected void addToFewArgumentError(HaxeCallExpressionEvaluation evaluation, int minArgRequired) {
         if(isBindCall) return; // ignore missing arguments if bind call (bind has rules handling missing arguments)
         String message = HaxeBundle.message("haxe.semantic.method.parameter.missing", minArgRequired, arguments.size());
         if (sourceExpression instanceof HaxeCallExpression callExpression) {
@@ -573,7 +606,7 @@ public class HaxeCallExpressionContext {
         }
     }
 
-    private void addToManyArgumentError(HaxeCallExpressionEvaluation evaluation, int maxArgAllowed) {
+    protected void addToManyArgumentError(HaxeCallExpressionEvaluation evaluation, int maxArgAllowed) {
         String message = HaxeBundle.message("haxe.semantic.method.parameter.too.many", maxArgAllowed, arguments.size());
         if (sourceExpression instanceof HaxeCallExpression callExpression) {
             HaxeCallExpressionList expressionList = callExpression.getExpressionList();

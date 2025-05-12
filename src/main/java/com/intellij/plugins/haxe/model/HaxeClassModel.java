@@ -19,6 +19,8 @@
  */
 package com.intellij.plugins.haxe.model;
 
+import com.intellij.openapi.util.RecursionGuard;
+import com.intellij.openapi.util.RecursionManager;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.lang.psi.impl.AbstractHaxePsiClass;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxeObjectLiteralImpl;
@@ -588,7 +590,7 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
       if (exhibitor != null) {
         FullyQualifiedInfo containerInfo = exhibitor.getQualifiedInfo();
         if (containerInfo != null) {
-          return new FullyQualifiedInfo(containerInfo.packagePath, containerInfo.fileName, getName(), null);
+          return new FullyQualifiedInfo(containerInfo.packagePath, containerInfo.moduleName, getName(), null);
         }
       }
     return null;
@@ -859,9 +861,10 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
     // TODO ClassModel concept should be reviewed. We need to separate logic of abstracts, regular classes, enums, etc. Right now this class a bunch of if-else conditions. It looks dirty.
     ArrayList<HaxeModel> out = new ArrayList<>();
     if (isClass()) {
-      HaxeClassBody body = UsefulPsiTreeUtil.getChild(haxeClass, HaxeClassBody.class);
+      PsiElement body = getBodyPsi();
       if (body != null) {
-        for (HaxeNamedComponent declaration : PsiTreeUtil.getChildrenOfAnyType(body, HaxeFieldDeclaration.class, HaxeMethod.class)) {
+        List<? extends HaxeNamedComponent> children = PsiTreeUtil.getChildrenOfAnyType(body, HaxeFieldDeclaration.class, HaxeMethod.class);
+        for (HaxeNamedComponent declaration : children) {
           if (!(declaration instanceof PsiMember)) continue;
           if (declaration instanceof HaxeFieldDeclaration varDeclaration) {
             if (varDeclaration.isPublic() && varDeclaration.isStatic()) {
@@ -958,5 +961,29 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
 
   public boolean isStructInit() {
     return hasCompileTimeMeta(HaxeMeta.STRUCT_INIT);
+  }
+
+  private final RecursionGuard<PsiElement> inheritsFromRecursionGuard = RecursionManager.createGuard("inheritsFromRecursionGuard");
+
+  public boolean inheritsFrom(HaxeClass haxeClass) {
+    return Boolean.TRUE.equals(inheritsFromRecursionGuard.doPreventingRecursion(this.haxeClass, true, () -> {
+        List<HaxeClassReferenceModel> interfaces = getImplementingInterfaces();
+        for (HaxeClassReferenceModel anInterface : interfaces) {
+            HaxeClassModel haxeClassModel = anInterface.getHaxeClassModel();
+            if (haxeClassModel != null) {
+                if (haxeClassModel.haxeClass == haxeClass) return true;
+                if (haxeClassModel.inheritsFrom(haxeClass)) return true;
+            }
+        }
+        List<HaxeClassReferenceModel> extendingTypes = getExtendingTypes();
+        for (HaxeClassReferenceModel extendingType : extendingTypes) {
+            HaxeClassModel haxeClassModel = extendingType.getHaxeClassModel();
+            if (haxeClassModel != null) {
+                if (haxeClassModel.haxeClass == haxeClass) return true;
+                if (haxeClassModel.inheritsFrom(haxeClass)) return true;
+            }
+        }
+        return false;
+    }));
   }
 }

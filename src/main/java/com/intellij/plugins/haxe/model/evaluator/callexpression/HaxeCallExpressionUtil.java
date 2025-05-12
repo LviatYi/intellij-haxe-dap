@@ -1,6 +1,7 @@
 package com.intellij.plugins.haxe.model.evaluator.callexpression;
 
 import com.intellij.plugins.haxe.lang.psi.*;
+import com.intellij.plugins.haxe.model.FullyQualifiedInfo;
 import com.intellij.plugins.haxe.model.HaxeClassModel;
 import com.intellij.plugins.haxe.model.HaxeMethodModel;
 import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluator;
@@ -15,6 +16,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.intellij.plugins.haxe.lang.psi.impl.HaxeReferenceUtil.wrapTypeInClassOrEnum;
 import static java.util.function.Predicate.not;
 
 public class HaxeCallExpressionUtil {
@@ -65,6 +67,7 @@ public class HaxeCallExpressionUtil {
     HaxeCallExpressionContext evaluation = new HaxeCallExpressionContext(argumentList, parameterList, returnType, resolver, methodGenericResolver);
 
     evaluation.isMacroFunction = methodModel.isMacro() && !methodModel.isStatic();
+    evaluation.isEnumConstructor = false;
     evaluation.callie = callie;
     return evaluation;
   }
@@ -117,11 +120,45 @@ public class HaxeCallExpressionUtil {
     evaluation.isStaticExtension = isStaticExtension;
     evaluation.isMacroFunction = isMacroFunction;
     evaluation.isBindCall = isBindCall(callExpression);
+    evaluation.isInEnumValueMatchArgument = isEnumValueMatchCall(callExpression);
+    evaluation.isEnumValueMatchCallExpression = isEnumValueMatchCallExpression(callExpression);
+    evaluation.isEnumConstructor = isEnumConstructor(callExpression);
     evaluation.callie = callieType;
 
 
 
     return evaluation;
+  }
+
+  private static boolean isEnumValueMatchCall(@NotNull HaxeCallExpression callExpression) {
+    HaxeCallExpression parent = PsiTreeUtil.getParentOfType(callExpression, HaxeCallExpression.class);
+    while(parent != null) {
+      if(isEnumValueMatchCallExpression(parent)) {
+        return true;
+      }
+      parent = PsiTreeUtil.getParentOfType(parent, HaxeCallExpression.class);
+    }
+    return false;
+  }
+  private static boolean isEnumValueMatchCallExpression(@NotNull HaxeCallExpression callExpression) {
+    if (callExpression.getExpression() instanceof HaxeReferenceExpression referenceExpression) {
+      PsiElement resolve = referenceExpression.resolve();
+      if (resolve instanceof HaxeMethodDeclaration methodDeclaration) {
+        FullyQualifiedInfo qualifiedInfo = methodDeclaration.getModel().getQualifiedInfo();
+        boolean patternMatchingCall = qualifiedInfo != null && qualifiedInfo.toString().equalsIgnoreCase("EnumValue.EnumValue.match");
+        if (patternMatchingCall) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static boolean isEnumConstructor(@NotNull HaxeCallExpression callExpression) {
+    if( callExpression.getExpression() instanceof HaxeReferenceExpression referenceExpression) {
+        return referenceExpression.resolve() instanceof HaxeEnumValueDeclarationConstructor;
+    }
+    return false;
   }
 
   private static @Nullable SpecificTypeReference tryCastAssignHintToReturnType(@Nullable SpecificTypeReference assignHint, ResultHolder returnType) {
@@ -162,13 +199,11 @@ public class HaxeCallExpressionUtil {
 
   public static boolean isBindCall(@NotNull HaxeCallExpression callExpression) {
     HaxeExpression expression = callExpression.getExpression();
-    if (expression != null) {
+    if (expression != null && expression.getLastChild().textMatches("bind")) {
       HaxeReference left = HaxeResolveUtil.getLeftReference(expression);
       if (left != null) {
         ResultHolder result = HaxeExpressionEvaluator.evaluate(left).result;
-        if (result.isFunctionType() && expression.getLastChild().textMatches("bind")) {
-          return true;
-        }
+        return result.isFunctionType();
       }
     }
     return false;
@@ -207,6 +242,7 @@ public class HaxeCallExpressionUtil {
             evaluation.assignHint = assignHint != null ? assignHint.getType() : null;
             evaluation.isStaticExtension = false;
             evaluation.isMacroFunction = false;
+            evaluation.isEnumConstructor = false; // enums dont use the new keyword
             evaluation.isConstructor = true;
             return evaluation;
           }
@@ -288,12 +324,20 @@ public class HaxeCallExpressionUtil {
   @NotNull
   public static SpecificTypeReference tryGetCallieType(@NotNull HaxeCallExpression callExpression,  @Nullable HaxeMethod method, boolean extensionMethod) {
 
+
     HaxeExpression expression = callExpression.getExpression();
     if (expression != null) {
       @NotNull PsiElement[] children = expression.getChildren();
       // if we got more than one child we are a chain and need to resolve the chain to know correct class
       if (children.length > 1) {
         PsiElement child = children[children.length - 2];
+        // if extension method  and callie is a specific class or Enum, wrap type in Enum<T> or CLass<T>
+        if(extensionMethod && child instanceof HaxeReferenceExpression referenceExpression) {
+          PsiElement resolve = referenceExpression.resolve();
+          if (resolve instanceof  HaxeClass haxeClass) {
+            return wrapTypeInClassOrEnum(referenceExpression, haxeClass).getType();
+          }
+        }
         HaxeExpressionEvaluatorContext evaluatorContext = new HaxeExpressionEvaluatorContext(child);
         ResultHolder result = HaxeExpressionEvaluator.evaluateWithRecursionGuard(child, evaluatorContext, null).result;
         if (!result.isUnknown()) return result.getType(); // can be any "type" class/function/enum

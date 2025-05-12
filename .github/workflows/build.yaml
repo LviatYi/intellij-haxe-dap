@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false # set this to true if you want to cancel all builds if one fails.
       matrix:
-        IDEA_VERSION: [2024.3]
+        IDEA_VERSION: [2025.1]
         OS: [macos-13, ubuntu-latest, windows-latest]
 
     runs-on: ${{ matrix.OS }}
@@ -29,6 +29,13 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: 21
+
+      - name: Maximize Build Space (ubuntu/mac)
+        if: ${{ matrix.os != 'windows-latest'}}
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
 
       - name: Set up Haxe
         uses: krdlab/setup-haxe@v1
@@ -62,4 +69,5 @@ jobs:
         timeout-minutes: 20
         if: ${{ matrix.os != 'windows-latest'}}
         run: ./gradlew clean test buildPlugin verifyPlugin
+
 

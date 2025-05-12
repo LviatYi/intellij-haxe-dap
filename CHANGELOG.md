@@ -1,4 +1,44 @@
 # Changelog
+## 1.7.0
+* Added: Access control annotation checking keywords(static private, public) and annotations (`@:access` `@:privateAccess`, `@:allow`)
+* Added: unused definition annotations (local functions, fields and methods).
+* Added: return statement annotations (checks return type compatibility).
+* Added: Add missing imports when generating methods (constructor, override, implement) 
+* Added: Support for patterns syntax in EnumValue.match calls
+* Added: Automatically adding missing imports when performing copy & past inside intellij. 
+* Fixed: Generated overrides now include optional and defaults in parameter lists.
+* Fixed: safe cast expression followed by ArrayAccess expression would give parser error.
+* Bugfix: Introduce variable action in switch-case block would generate variable above switch statement instead of inside the block.
+* Improvement: Better type guessing for introduce member quickfixes + adding missing imports when generating for differentFile/class.
+* Misc: Tweaks to avoid slow operation warning when creating/showing large Class hierarchies 
+* Misc: Better and more accurate logic for resolving modules and static extensions
+
+
+## 1.6.8
+*  Support for IntelliJ 2024.x is dropped due to breaking changes in refactoring API in IntelliJ 2025.
+
+## 1.6.7
+* Fixed: Issue parsing postfix expressions after arrayAccess and callExpressions.
+* improvement: more accurate logic determining if `case` expression is captureVariable or references. 
+* improvement: Better support for operator overloads
+
+## 1.6.6
+* Bugfix: Fixed issue where Class references where treated as instance references in new expressions 
+* Fixed: Extension methods from `EnumValueTools` and `EnumTools` are now resolved without using imports (same as the compiler)
+* Fixed: TypeParameters are now kept when using `bind()` on method references.
+* Fixed: Incorrect caching of members resolved from typedefs
+* improvement: misc minor bugfixes and performance improvements.
+
+Known issues :
+- Extension methods from `EnumValueTools` and `EnumTools` are not included in completions without using statement.
+
+
+## 1.6.5
+* Added: Cppia target for OpenFL/Lime builds
+* Fixed: Direct cast to Abstract with typeParameters would fail for typeParameters with constraints.  
+* Fixed: parser regression (inline callExpressions)
+* Improvement: misc fixes and better text formating for reader mode/ inline doc render 
+
 ## 1.6.4
 * Improvement: Reworked documentation rendering and added support for reader mode.
 * Fixed: Parser issues with ternaryExpressions containing assignExpression.

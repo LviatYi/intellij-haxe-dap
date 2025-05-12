@@ -20,10 +20,10 @@ package com.intellij.plugins.haxe.ide.generation;
 
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.plugins.haxe.HaxeComponentType;
-import com.intellij.plugins.haxe.lang.psi.HaxeClass;
-import com.intellij.plugins.haxe.lang.psi.HaxeNamedComponent;
-import com.intellij.plugins.haxe.lang.psi.HaxePsiModifier;
-import com.intellij.plugins.haxe.lang.psi.HaxeTypeTag;
+import com.intellij.plugins.haxe.lang.psi.*;
+import com.intellij.plugins.haxe.model.HaxeMethodModel;
+import com.intellij.plugins.haxe.model.HaxeParameterModel;
+import com.intellij.plugins.haxe.model.type.ResultHolder;
 import com.intellij.plugins.haxe.util.HaxePresentableUtil;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMember;
@@ -31,6 +31,8 @@ import com.intellij.psi.util.PsiTreeUtil;
 
 import java.util.Arrays;
 import java.util.List;
+
+import static com.intellij.plugins.haxe.ide.inspections.intentions.HaxeIntroduceUtil.findTypesRequiringImportsAndAddToFile;
 
 /**
  * @author: Fedor.Korotkov
@@ -73,7 +75,7 @@ public class OverrideImplementMethodFix extends BaseCreateMethodsFix<HaxeNamedCo
       result.append(element.getName());
     } else {
       result.append("function ");
-      appendMethodNameAndParameters(result, element, true);
+      appendMethodNameAndParameters(result, element, true, true);
     }
     final HaxeTypeTag typeTag = PsiTreeUtil.getChildOfType(element, HaxeTypeTag.class);
     String type = null;
@@ -91,7 +93,7 @@ public class OverrideImplementMethodFix extends BaseCreateMethodsFix<HaxeNamedCo
           result.append("return ");
         }
         result.append("super.");
-        appendMethodNameAndParameters(result, element, false);
+        appendMethodNameAndParameters(result, element, false, false);
         result.append(";\n");
       }
       result.append("}");
@@ -99,10 +101,27 @@ public class OverrideImplementMethodFix extends BaseCreateMethodsFix<HaxeNamedCo
     return result.toString();
   }
 
-  private void appendMethodNameAndParameters(StringBuilder buf, HaxeNamedComponent element, boolean addParametersTypes) {
+  protected void modifyElement(HaxeNamedComponent e) {
+
+    if(anchor instanceof HaxeMethodDeclaration methodDeclaration) {
+      HaxeMethodModel model = methodDeclaration.getModel();
+      HaxeMethodModel ancestorMethod = model.getAncestorMethod(null);
+      if(ancestorMethod != null) {
+        List<HaxeParameterModel> parameters = model.getParameters();
+        ResultHolder returnType = model.getReturnType(null);
+
+        List<ResultHolder> knownParamTypes = ancestorMethod.getParameters().stream().map(HaxeParameterModel::getType).toList();
+        ResultHolder knownReturnType = ancestorMethod.getReturnType(null);
+
+        findTypesRequiringImportsAndAddToFile(parameters, knownParamTypes, returnType, knownReturnType, anchor.getContainingFile());
+      }
+    }
+  }
+
+  private void appendMethodNameAndParameters(StringBuilder buf, HaxeNamedComponent element, boolean addParametersTypes, boolean addOptionalAndDefaults) {
     buf.append(element.getName());
     buf.append(" (");
-    buf.append(HaxePresentableUtil.getPresentableParameterList(element, specializations, addParametersTypes));
+    buf.append(HaxePresentableUtil.getPresentableParameterList(element, specializations, addParametersTypes, addOptionalAndDefaults));
     buf.append(")");
   }
 }

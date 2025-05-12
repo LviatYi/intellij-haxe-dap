@@ -1,5 +1,4 @@
 package ;
-import Float;
 using StringTools;
 
 import  StringBuf as ImportAlias;
@@ -13,6 +12,7 @@ interface I {}
 class CallExpressionTest {
     function noArgs() {}
     function oneArgs(arg1:String) {}
+    function classArgs(arg1:Class<String>) {}
     function optionalArgs(arg1:String, ?arg2:Int) {}
     function defaultArgs(arg1:String, arg2:String = "") {}
     function functionArgs(arg1:String,  arg3:Int->String) {}
@@ -23,10 +23,10 @@ class CallExpressionTest {
     function typeDefArg(arg1:MyStruct) {}
     function classInheritArgs(arg1:A) {}
     function interfaceInheritArgs(arg1:C) {}
-    function genericArgs<T>(arg1:T, Arg2:T):T {}
-    function genericClassArgs<T>(arg1:Class<T>):T {}
-    function genericConstraintsArgs<T:String>(arg1:T):T {}
-    function genericClassConstraintsArgs<T:A>(arg1:Class<T>):T {}
+    function genericArgs<T>(arg1:T, Arg2:T):T {return null;}
+    function genericClassArgs<T>(arg1:Class<T>):T {return null;}
+    function genericConstraintsArgs<T:String>(arg1:T):T {return null;}
+    function genericClassConstraintsArgs<T:A>(arg1:Class<T>):T {return null;}
     function genericComplexConstraintsArgs<T:String>(arg1:Array<T>) {}
 
 
@@ -42,6 +42,9 @@ class CallExpressionTest {
         oneArgs(null); //CORRECT (String can be null)
         oneArgs(<error descr="Type mismatch (Expected: 'String' got: 'Int')">1</error>); // WRONG (incorrect argument type)
         oneArgs<error descr="Not enough arguments (expected 1 but got 0)\"">()</error>; // WRONG (Missing argument)
+
+        classArgs(String); // CORRECT
+        classArgs(<error descr="Type mismatch (Expected: 'Class<String>' got: 'String')">"String"</error>); // WRONG
 
         optionalArgs("String"); // CORRECT (optional is not required)
         optionalArgs("String", 1); // CORRECT (optional can be set)
@@ -109,7 +112,7 @@ class CallExpressionTest {
         genericClassArgs(<error descr="Type mismatch (Expected: 'Class<T>' got: 'Int')">1</error>);  // WRONG parameter type  (should be Class)
         genericClassArgs(<error descr="Type mismatch (Expected: 'Class<T>' got: 'StringBuf')">resultC</error>);  // WRONG parameter type (should be Class)
         var resultD:Int = genericClassArgs(<error descr="Type mismatch (Expected: 'Class<T>' got: 'Int')">1</error>);  // WRONG ( parameter should be Class)
-        var <error descr="Incompatible type: String should be Int">resultE:Int = genericClassArgs(String)</error>;  // WRONG variable type and return type missmatch
+        var resultE:Int = <error descr="Incompatible type: String should be Int">genericClassArgs(String)</error>;  // WRONG variable type and return type missmatch
 
         genericClassConstraintsArgs(A); // CORRECT (matches constraints)
         genericClassConstraintsArgs(B); // CORRECT since B extends A

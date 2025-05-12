@@ -17,24 +17,36 @@
 package com.intellij.plugins.haxe.model;
 
 import com.intellij.plugins.haxe.lang.psi.HaxeReferenceExpression;
+import lombok.With;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
+@With
 public class FullyQualifiedInfo {
   public static final char PATH_SEPARATOR = '.';
+  public static final String PARAMETER_SEPARATOR = "#";
 
   final public String packagePath;
-  final public String fileName;
-  final public String className;
-  final public String memberName;
+  @Nullable final public String moduleName;
+  @Nullable final public String className;
+  @Nullable final public String memberName;
+  @Nullable final public String parameter;
 
-  public FullyQualifiedInfo(String packagePath, @Nullable String fileName, @Nullable String className, @Nullable String memberName) {
+  public FullyQualifiedInfo(String packagePath, @Nullable String moduleName, @Nullable String className, @Nullable String memberName) {
     this.packagePath = packagePath;
-    this.fileName = fileName;
+    this.moduleName = moduleName;
     this.className = className;
     this.memberName = memberName;
+    this.parameter = null;
+  }
+  public FullyQualifiedInfo(String packagePath, @Nullable String moduleName, @Nullable String className, @Nullable String memberName, @Nullable String parameter) {
+    this.packagePath = packagePath;
+    this.moduleName = moduleName;
+    this.className = className;
+    this.memberName = memberName;
+    this.parameter = parameter;
   }
 
   public FullyQualifiedInfo(@Nullable String fullyQualifiedIdentifier) {
@@ -52,13 +64,14 @@ public class FullyQualifiedInfo {
 
     int i = 0;
     int size = parts.size();
-    while (i < size) {
+     while (i < size) {
       String identifier = parts.get(i);
       if (identifier == null) {
         packagePath = null;
-        fileName = null;
-        memberName = null;
+        moduleName = null;
         className = null;
+        memberName = null;
+        parameter = null;
         return;
       }
       if (Character.isUpperCase(identifier.charAt(0))) {
@@ -71,19 +84,38 @@ public class FullyQualifiedInfo {
     }
 
     packagePath = packagePathBuilder.toString();
-    fileName = i < size ? parts.get(i++) : null;
+    moduleName = i < size ? parts.get(i++) : null;
 
-    if (fileName == null) {
+    if (moduleName == null) {
       className = null;
       memberName = null;
+      parameter = null;
     } else {
       final String classOrMemberName = i < size ? parts.get(i++) : null;
       if (classOrMemberName != null && Character.isLowerCase(classOrMemberName.charAt(0))) {
-        memberName = classOrMemberName;
-        className = fileName;
+        if (classOrMemberName.contains(PARAMETER_SEPARATOR)) {
+          String[] split = classOrMemberName.split(PARAMETER_SEPARATOR);
+          memberName = split[0];
+          parameter = split[1];
+        } else {
+          memberName = classOrMemberName;
+          parameter = null;
+        }
+        className = moduleName;
       } else {
         className = classOrMemberName;
-        memberName = i < size ? parts.get(i) : null;
+        String possibleMember = i < size ? parts.get(i) : null;
+        if (possibleMember == null) {
+          memberName = null;
+          parameter = null;
+        } else if (possibleMember.contains(PARAMETER_SEPARATOR)) {
+          String[] split = possibleMember.split(PARAMETER_SEPARATOR);
+          memberName = split[0];
+          parameter = split[1];
+        } else {
+          memberName = possibleMember;
+          parameter = null;
+        }
       }
     }
   }
@@ -95,9 +127,9 @@ public class FullyQualifiedInfo {
       builder.append(packagePath);
     }
 
-    if (fileName == null || fileName.isEmpty()) return builder.toString();
-    if (builder.length() > 0) builder.append(PATH_SEPARATOR);
-    builder.append(fileName);
+    if (moduleName == null || moduleName.isEmpty()) return builder.toString();
+    if (!builder.isEmpty()) builder.append(PATH_SEPARATOR);
+    builder.append(moduleName);
 
     if (className != null && !className.isEmpty()) {
       builder.append(PATH_SEPARATOR);
@@ -107,6 +139,10 @@ public class FullyQualifiedInfo {
     if (memberName != null && !memberName.isEmpty()) {
       builder.append(PATH_SEPARATOR);
       builder.append(memberName);
+    }
+    if (parameter != null && !parameter.isEmpty()) {
+      builder.append(PARAMETER_SEPARATOR);
+      builder.append(parameter);
     }
 
     return builder.toString();
@@ -118,11 +154,11 @@ public class FullyQualifiedInfo {
       builder.append(packagePath);
     }
 
-    if (fileName == null || fileName.isEmpty()) return builder.toString();
-    if (builder.length() > 0) builder.append(PATH_SEPARATOR);
-    builder.append(fileName);
+    if (moduleName == null || moduleName.isEmpty()) return builder.toString();
+    if (!builder.isEmpty()) builder.append(PATH_SEPARATOR);
+    builder.append(moduleName);
 
-    if (className != null && !className.isEmpty() && !className.equals(fileName)) {
+    if (className != null && !className.isEmpty() && !className.equals(moduleName)) {
       builder.append(PATH_SEPARATOR);
       builder.append(className);
     }
@@ -130,6 +166,11 @@ public class FullyQualifiedInfo {
     if (memberName != null && !memberName.isEmpty()) {
       builder.append(PATH_SEPARATOR);
       builder.append(memberName);
+    }
+
+    if (parameter != null && !parameter.isEmpty()) {
+      builder.append(PARAMETER_SEPARATOR);
+      builder.append(parameter);
     }
 
     return builder.toString();
@@ -151,7 +192,7 @@ public class FullyQualifiedInfo {
 
   @Override
   public int hashCode() {
-    return Objects.hash(packagePath, fileName, className, memberName);
+    return Objects.hash(packagePath, moduleName, className, memberName);
   }
 
   public String getClassPath() {
@@ -162,9 +203,9 @@ public class FullyQualifiedInfo {
     String result = packagePath;
 
     if (result.isEmpty()) {
-      result = fileName;
+      result = moduleName;
     } else {
-      result += PATH_SEPARATOR + fileName;
+      result += PATH_SEPARATOR + moduleName;
     }
 
     return result;
@@ -175,8 +216,8 @@ public class FullyQualifiedInfo {
   }
   // avoiding full path to class (MyPackage.MyClass.Myclass, where Myclass is both module name and classname)
   public String toShortendImportReferenceString() {
-    if (fileName.equals(className)) {
-      return new FullyQualifiedInfo(packagePath, fileName, null, memberName).toString();
+    if (moduleName.equals(className)) {
+      return new FullyQualifiedInfo(packagePath, moduleName, null, memberName).toString();
     }
     return toString();
   }
@@ -194,6 +235,6 @@ public class FullyQualifiedInfo {
   }
 
   private boolean equalsToFileName(String name) {
-    return className == null && fileName != null && fileName.equals(name);
+    return className == null && moduleName != null && moduleName.equals(name);
   }
 }

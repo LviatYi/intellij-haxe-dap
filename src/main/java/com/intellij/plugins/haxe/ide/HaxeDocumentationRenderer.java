@@ -8,6 +8,7 @@ import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
 import com.intellij.openapi.editor.richcopy.HtmlSyntaxInfoUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.plugins.haxe.HaxeLanguage;
+import com.intellij.psi.PsiDocCommentBase;
 import org.commonmark.Extension;
 import org.commonmark.ext.autolink.AutolinkExtension;
 import org.commonmark.ext.gfm.tables.TablesExtension;
@@ -15,6 +16,8 @@ import org.commonmark.node.*;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.NodeRenderer;
 import org.commonmark.renderer.html.*;
+import org.jetbrains.annotations.NotNull;
+
 
 import java.awt.*;
 import java.util.Arrays;
@@ -33,8 +36,7 @@ public class HaxeDocumentationRenderer {
     List<Extension> extensions = Arrays.asList(
             AutolinkExtension.create(),
             TablesExtension.create(),
-            HaxeDocumentationTagsExtension.create(),
-            HaxeCodeReferenceToLinksExtension.create(project)
+            HaxeDocumentationTagsExtension.create()
     );
 
     myProject = project;
@@ -50,11 +52,36 @@ public class HaxeDocumentationRenderer {
   }
 
 
-  public String parseAndRenderDocs(String docs) {
-      Node document = parser.parse(docs);
-      return renderer.render(document);
+  public String parseAndRenderDocs(String docs, @NotNull PsiDocCommentBase comment) {
+    Node document = parser.parse(docs);
+    document.accept(new HaxeDocumentationCodeVisitor(comment));
+    wrapInDefaultHtmlTags(document);
+    return renderer.render(document);
   }
 
+
+  private static void wrapInDefaultHtmlTags(Node document) {
+    // wrap in  html body and  div tags with default styling
+
+    // prefix
+    document.prependChild(createHtmlTag("<div class='content'>"));
+    document.prependChild(createHtmlTag("<div class='definition'>"));
+    // this one is important: default overflow-wrap for inline docs rendering is "anywhere"
+    document.prependChild(createHtmlTag("<body style='overflow-wrap: break-word'>"));
+    document.prependChild(createHtmlTag("<html>"));
+
+    //postfix
+    document.appendChild(createHtmlTag("</div>"));
+    document.appendChild(createHtmlTag("</div>"));
+    document.appendChild(createHtmlTag("</body>"));
+    document.appendChild(createHtmlTag("</html>"));
+  }
+
+  private static @NotNull HtmlInline createHtmlTag(String tag) {
+    HtmlInline styleBeginTag = new HtmlInline();
+    styleBeginTag.setLiteral(tag);
+    return styleBeginTag;
+  }
 
 
   private static class languageHighlighter implements HtmlNodeRendererFactory {

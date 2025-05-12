@@ -11,6 +11,7 @@ import org.commonmark.parser.PostProcessor;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -40,7 +41,7 @@ class HaxeDocumentationTagsProcessor implements PostProcessor {
 class HaxeDocumentationTagsVisitor extends AbstractVisitor {
 
     public static Pattern docTagPattern = Pattern.compile("(@\\w+)(.*)");
-    public static Pattern parameterContentPattern = Pattern.compile("(\\S+)\\s+(.*)");
+    public static Pattern parameterContentPattern = Pattern.compile("(\\S+)(\\s+(.*))?");
 
     public static final String TAG_SINCE = "@since";
     public static final String TAG_SEE = "@see";
@@ -48,6 +49,8 @@ class HaxeDocumentationTagsVisitor extends AbstractVisitor {
     public static final String TAG_RETURN = "@return";
     public static final String TAG_EVENT = "@event";
     public static final String TAG_THROWS = "@throws";
+
+    //TODO @example ?
 
     private static final List<String> TAGS = List.of(
             TAG_SINCE,
@@ -248,7 +251,7 @@ class HaxeDocumentationTagsVisitor extends AbstractVisitor {
         Matcher matcher = parameterContentPattern.matcher(content.trim());
         if (matcher.find()) {
             String parameterName = matcher.group(1);
-            String parameterDescription = matcher.group(2).trim();
+            String parameterDescription = Optional.ofNullable(matcher.group(2)).orElse("").trim();
 
             TableCell argumentCell = new TableCell();
             TableCell descriptionCell = new TableCell();
@@ -278,6 +281,7 @@ class HaxeDocumentationTagsVisitor extends AbstractVisitor {
         }
         return parameterRow;
     }
+
 
     private static boolean nextLiteralContainsTag(Node nextContentNode) {
         // ignore soft linebreaks (needed when multiple tags of different types are joined together)
@@ -324,10 +328,10 @@ class HaxeDocumentationTagsVisitor extends AbstractVisitor {
         for (String column : columns) {
             TableCell cell = new TableCell();
             cell.setHeader(true);
+            cell.setAlignment(TableCell.Alignment.LEFT);
             cell.appendChild(new Text(column));
             tableHeader.appendChild(cell);
         }
-
         tableHead.appendChild(tableHeader);
         tableBlock.appendChild(tableHead);
     }

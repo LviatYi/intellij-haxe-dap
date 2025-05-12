@@ -23,8 +23,12 @@ import com.intellij.plugins.haxe.HaxeBundle;
 import com.intellij.plugins.haxe.ide.annotator.HaxeAnnotatingVisitor;
 import com.intellij.plugins.haxe.ide.inspections.intentions.HaxeIntroduceFieldIntention;
 import com.intellij.plugins.haxe.lang.psi.*;
+import com.intellij.plugins.haxe.model.type.ResultHolder;
+import com.intellij.plugins.haxe.model.type.SpecificFunctionReference;
+import com.intellij.plugins.haxe.model.type.SpecificTypeReference;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.ArrayUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
@@ -35,6 +39,8 @@ import java.util.List;
 import java.util.Objects;
 
 import static com.intellij.plugins.haxe.ide.inspections.HaxeUnresolvedSymbolQuickFixes.*;
+import static com.intellij.plugins.haxe.ide.inspections.HaxeUnresolvedSymbolQuickFixes.createMethodQuickfix;
+import static com.intellij.plugins.haxe.ide.inspections.intentions.HaxeUnresolvedSymbolIntentionBase.guessElementType;
 
 /**
  * Created by fedorkorotkov.
@@ -136,8 +142,31 @@ public class HaxeUnresolvedSymbolInspection extends LocalInspectionTool {
       if (targetClass instanceof HaxeClassDeclaration || targetClass instanceof HaxeExternClassDeclaration) {
         list.add(createFieldQuickfix(reference, targetClass));
       }
+
+      checkIfExpectedTypeIsFunctionAndCreateQuickfixes(list, reference, targetClass);
     }
     return list.stream().filter(Objects::nonNull).toArray(LocalQuickFix[]::new);
+  }
+
+  private static void checkIfExpectedTypeIsFunctionAndCreateQuickfixes(List<LocalQuickFix> list, HaxeReferenceExpression reference, HaxeClass targetClass) {
+    // methods should not be generated inside Object literal, find parent class;
+    while (targetClass instanceof HaxeObjectLiteral) {
+      targetClass = PsiTreeUtil.getParentOfType(targetClass, HaxeClass.class);
+    }
+    if(targetClass == null) return;
+    if(reference == null) return;
+
+    ResultHolder resultHolder = guessElementType(reference);
+    if(resultHolder.isFunctionType()) {
+      SpecificFunctionReference functionReference = resultHolder.getFunctionType();
+      list.add(createMethodQuickfix(functionReference, reference, targetClass));
+    }
+    if(resultHolder.isTypeDef()) {
+      SpecificTypeReference specificTypeReference = resultHolder.getClassType().fullyResolveTypeDefAndUnwrapNullTypeReference();
+      if(specificTypeReference instanceof SpecificFunctionReference functionReference) {
+        list.add(createMethodQuickfix(functionReference, reference, targetClass));
+      }
+    }
   }
 
 

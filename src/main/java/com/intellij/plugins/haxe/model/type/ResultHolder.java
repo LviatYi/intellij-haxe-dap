@@ -140,8 +140,9 @@ public class ResultHolder {
 
 
 
-  public void disableMutating() {
-    this.canMutate = false;
+  public ResultHolder setImmutable(boolean immutable) {
+    this.canMutate = !immutable;
+    return this;
   }
 
   public boolean hasMutated() {
@@ -199,6 +200,7 @@ public class ResultHolder {
   public ResultHolder duplicate() {
     ResultHolder resultHolder = new ResultHolder(this.getType());
     resultHolder.cacheable = cacheable;
+    resultHolder.canMutate = canMutate;
     return resultHolder;
   }
 
@@ -292,6 +294,8 @@ public class ResultHolder {
     SpecificTypeReference type = holder.getType();
     if (type instanceof  SpecificHaxeClassReference classReference) {
       for (ResultHolder specific : classReference.getSpecifics()) {
+        // ignore unknown if in Dynamic
+        if(specific.isDynamic() && containsUnknownTypeParameters(specific)) return false;
         if (specific.isUnknown() || containsUnknownTypeParameters(specific)) return  true;
       }
     }

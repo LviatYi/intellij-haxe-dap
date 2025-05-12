@@ -19,29 +19,15 @@
  */
 package com.intellij.plugins.haxe.ide;
 
-import com.intellij.codeInsight.intention.IntentionAction;
-import com.intellij.codeInspection.InspectionToolProvider;
-import com.intellij.codeInspection.LocalInspectionTool;
-import com.intellij.codeInspection.ex.InspectionProfileImpl;
-import com.intellij.codeInspection.ex.InspectionToolWrapper;
-import com.intellij.codeInspection.ex.LocalInspectionToolWrapper;
-import com.intellij.openapi.fileEditor.FileDocumentManager;
-import com.intellij.openapi.project.Project;
 import com.intellij.plugins.haxe.HaxeBundle;
-import com.intellij.plugins.haxe.HaxeCodeInsightFixtureTestCase;
 import com.intellij.plugins.haxe.ide.annotator.HaxeSemanticAnnotatorInspections;
 import com.intellij.plugins.haxe.ide.inspections.HaxeUnresolvedSymbolInspection;
-import com.intellij.profile.codeInspection.InspectionProfileManager;
-import com.intellij.util.ArrayUtil;
-import org.apache.commons.lang3.StringUtils;
-import org.jetbrains.annotations.Nullable;
 import org.junit.Test;
 
-import java.lang.reflect.Constructor;
 import java.util.*;
 
 
-public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
+public class HaxeSemanticAnnotatorTest extends HaxeSemanticAnnotatorTestBase {
   @Override
   public void setUp() throws Exception {
     // for use when idempotence check problems occur and we need consistent results.
@@ -56,71 +42,6 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
     return "/annotation.semantic/";
   }
 
-  private void doTest(boolean checkWarnings, boolean checkInfos, boolean checkWeakWarnings,
-                      @Nullable Set<Class<? extends LocalInspectionTool>> unsetInspections,
-                      String... additionalFiles)
-    throws Exception {
-    myFixture.configureByFiles(ArrayUtil.mergeArrays(new String[]{getTestName(false) + ".hx"}, additionalFiles));
-    myFixture.enableInspections(getAnnotatorBasedInspection());
-    registerInspectionsForTesting( new HaxeSemanticAnnotatorInspections.Registrar(), myFixture.getProject(), unsetInspections);
-    myFixture.testHighlighting(checkWarnings, checkInfos, checkWeakWarnings);
-  }
-
-  public void registerInspectionsForTesting(InspectionToolProvider provider, Project project,
-                                            @Nullable Set<Class<? extends LocalInspectionTool>> unsetInspections) {
-    InspectionProfileManager mgr = InspectionProfileManager.getInstance(project);
-    InspectionProfileImpl profile = mgr.getCurrentProfile();
-
-    try {
-      Class<? extends LocalInspectionTool>[] classes = provider.getInspectionClasses();
-      for (Class<? extends LocalInspectionTool> c : classes) {
-        if (null != unsetInspections && unsetInspections.contains(c)) continue;
-
-        Constructor<? extends LocalInspectionTool> constructor = c.getDeclaredConstructor();
-        constructor.setAccessible(true);
-        InspectionToolWrapper<?, ?> wrapper = new LocalInspectionToolWrapper(constructor.newInstance());
-
-        Map<String, List<String>> dependencies = new HashMap<>();
-        profile.addTool(project, wrapper, dependencies);
-        profile.enableTool(wrapper.getShortName(), project);
-      }
-    }
-    catch (Exception ex) {
-      assertNotNull(ex.toString());
-    }
-  }
-
-  private void doTestSkippingAnnotators(Set<Class<? extends LocalInspectionTool>> unsetInspections) throws Exception {
-    doTest(true, false, false, unsetInspections);
-  }
-
-  private void doTestNoFixWithWarnings(String... additionalFiles) throws Exception {
-    doTest(true, false, false, null, additionalFiles);
-  }
-  private void doTestNoFixWithWeakWarnings(String... additionalFiles) throws Exception {
-    doTest(true, false, true, null, additionalFiles);
-  }
-
-  private void doTestNoFixWithoutWarnings(String... additionalFiles) throws Exception {
-    doTest(false, false, false, null, additionalFiles);
-  }
-
-  private void doTestActions(String... filters) throws Exception {
-    doTest(false, false, false, null);
-
-    List<IntentionAction> intentions = myFixture.getAvailableIntentions();
-    for (final IntentionAction action : intentions) {
-      if (Arrays.asList(filters).contains(action.getText())) {
-        System.out.println("Applying intent " + action.getText());
-        myFixture.launchAction(action);
-      }
-      else {
-        System.out.println("Ignoring intent " + action.getText() + ", not matching " + StringUtils.join(filters, ","));
-      }
-    }
-    FileDocumentManager.getInstance().saveAllDocuments();
-    myFixture.checkResultByFile(getTestName(false) + "_expected.hx");
-  }
 
   @Test
   public void testFixPackage() throws Exception {
@@ -139,7 +60,7 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
 
   @Test
   public void testChangeArgumentType() throws Exception {
-    doTestActions(HaxeBundle.message("haxe.quickfix.change.variable.type"));
+    doTestActions(HaxeBundle.message("haxe.quickfix.change.parameter.type"));
   }
 
   @Test
@@ -206,6 +127,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
     myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
     doTestNoFixWithWarnings();
   }
+  @Test
+  public void testAbstractOperatorOverload() throws Exception {
+    doTestNoFixWithWarnings();
+  }
 
   @Test
   public void testAbstractFromToMetadata() throws Exception {
@@ -259,7 +184,7 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
 
   @Test
   public void testOverrideVisibility() throws Exception {
-    doTestNoFixWithWarnings();
+    doTestNoFixWithWeakWarnings();
   }
 
   @Test
@@ -349,6 +274,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   public void testSimpleAssignUnknownGeneric() throws Exception {
     doTestNoFixWithWarnings();
   }
+  @Test
+  public void testSameNameEnumValuesAndConstructors() throws Exception {
+    doTestNoFixWithWarnings();
+  }
 
   @Test
   public void testExtendsAnonymousType() throws Exception {
@@ -387,9 +316,15 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   }
 
   @Test
+  public void testFieldTypeHintRequirement() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
   public void testFinalKeyword() throws Exception {
     doTestNoFixWithWarnings();
   }
+
   @Test
   public void testFinalKeywordEnum() throws Exception {
     doTestNoFixWithWarnings();
@@ -805,6 +740,11 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   }
 
   @Test
+  public void testPostfixOperator() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
   public void testFunctionBind1() throws Exception {
     doTestNoFixWithWarnings();
   }
@@ -917,6 +857,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   public void testCallExpression() throws Throwable {
     doTestNoFixWithWarnings();
   }
+  @Test
+  public void testNewExpression() throws Throwable {
+    doTestNoFixWithWarnings();
+  }
 
   @Test
   public void testTypeParameterConstraints() throws Throwable {
@@ -941,6 +885,13 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
     doTestNoFixWithWeakWarnings();
   }
   @Test
+  public void testCaptureVarShadowing() throws Throwable {
+    // unresolved symbols are used to confirm correct returned type
+    myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
+    doTestNoFixWithWeakWarnings();
+  }
+
+  @Test
   public void testCallingFunctionTypes() throws Throwable {
     // unresolved symbols are used to confirm correct returned type
     myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
@@ -958,6 +909,15 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   }
 
   @Test
+  public void testLocalVarImmutability() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+  @Test
+  public void testFieldImmutability() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
   public void testTypeParameterCount() throws Throwable {
     doTestNoFixWithWarnings();
   }
@@ -971,7 +931,7 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   }
   @Test
   public void testOperatorPrimitiveTest() throws Throwable {
-    doTestNoFixWithWarnings();
+    doTestNoFixWithWeakWarnings();
   }
   @Test
   public void testOperatorAbstractTest() throws Throwable {
@@ -984,6 +944,15 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   @Test
   public void testResolveTypeFromUsage() throws Throwable {
     doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testReturnStatementAnnotation() throws Throwable {
+    doTestNoFixWithWeakWarnings();
+  }
+  @Test
+  public void testSafeCastExpressions() throws Throwable {
+    doTestNoFixWithWeakWarnings();
   }
 
   @Test
@@ -1003,14 +972,32 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   }
   @Test
   public void testSwitchStatements() throws Throwable {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testEnumToolsResolve() throws Throwable {
     myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
     doTestNoFixWithWarnings();
   }
+
 
   // this might not be the right place for this test as its testing the resolver logic
   // but to verify the resolved results we need to do type compare
   @Test
   public void testEnumTypeHints() throws Throwable {
+    myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testEnumValueMatchFunction() throws Throwable {
+    myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testEnumMatchPattern() throws Throwable {
     myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
     doTestNoFixWithWarnings();
   }
@@ -1076,4 +1063,5 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   public void testAssignFunctionType6() throws Exception {
     doTestNoFixWithWarnings();
   }
+
 }

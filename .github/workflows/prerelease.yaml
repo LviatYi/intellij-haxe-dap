@@ -40,7 +40,7 @@ jobs:
     strategy:
       fail-fast: true # cancel all builds if one fails.
       matrix:
-        IDEA_VERSION: [2024.3]
+        IDEA_VERSION: [2025.1]
     needs: prepare
     runs-on: ubuntu-latest
     steps:
@@ -51,6 +51,13 @@ jobs:
           distribution: 'zulu'
           java-version: 21
           architecture: x64
+
+      - name: Maximize Build Space (ubuntu)
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+
 
       - name: Set up Haxe
         uses: krdlab/setup-haxe@v1

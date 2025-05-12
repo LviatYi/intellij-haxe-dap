@@ -50,6 +50,7 @@ import static com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluatorH
 import static com.intellij.plugins.haxe.model.evaluator.HaxeExpressionUsageUtil.findUsageAsParameterInFunctionCall;
 import static com.intellij.plugins.haxe.model.evaluator.HaxeExpressionUsageUtil.searchReferencesForTypeParameters;
 import static com.intellij.plugins.haxe.model.type.HaxeMacroTypeUtil.getTypeDefinition;
+import static com.intellij.plugins.haxe.util.UsefulPsiTreeUtil.getExpectedTypeForReturn;
 
 @CustomLog
 public class HaxeExpressionEvaluator {
@@ -60,6 +61,18 @@ public class HaxeExpressionEvaluator {
   static public HaxeExpressionEvaluatorContext evaluate(PsiElement element) {
     return evaluate(element, null);
   }
+  @NotNull
+  static public SpecificTypeReference evaluateFullyResolved(PsiElement element) {
+    ResultHolder result = evaluate(element, null).result;
+    if(result != null && !result.isUnknown()) {
+      if(result.getClassType()!= null && result.isTypeDef()) {
+        return result.getClassType().fullyResolveTypeDefAndUnwrapNullTypeReference();
+      }
+      return result.getType();
+    }
+    return createUnknown(element).getType();
+  }
+
   @NotNull
   static public HaxeExpressionEvaluatorContext evaluate(@NotNull PsiElement element, @Nullable HaxeGenericResolver resolver) {
     ProgressIndicatorProvider.checkCanceled();
@@ -258,8 +271,11 @@ public class HaxeExpressionEvaluator {
         return handleReferenceExpression(context, resolver, referenceExpression);
       }
 
-      if (element instanceof HaxeCastExpression castExpression) {
-        return handleCastExpression(castExpression);
+      if (element instanceof HaxeSafeCastExpression safeCastExpression) {
+        return handleSafeCastExpression(safeCastExpression);
+      }
+      if (element instanceof HaxeUnsafeCastExpression unsafeCastExpression) {
+        return handleUnsafeCastExpression(unsafeCastExpression);
       }
 
       if (element instanceof HaxeMapLiteral mapLiteral) {
@@ -365,6 +381,9 @@ public class HaxeExpressionEvaluator {
 
     if (element instanceof HaxePrefixExpression prefixExpression) {
       return handlePrefixExpression(context, resolver, prefixExpression);
+    }
+    if (element instanceof HaxePostfixExpression postfixExpression) {
+      return handlePostfixExpression(context, resolver, postfixExpression);
     }
 
     if (element instanceof HaxeIsTypeExpression) {
@@ -595,7 +614,7 @@ public class HaxeExpressionEvaluator {
   }
   @NotNull
   public static List<PsiReference> referenceSearch(final HaxeComponentName componentName, @Nullable final PsiElement searchScope) {
-    SearchScope scope = HaxeExpressionEvaluatorSearchUtil.getSearchScope(componentName, searchScope);
+    SearchScope scope = HaxeExpressionEvaluatorSearchUtil.getSmallestPossibleSearchScope(componentName, searchScope);
     return referenceSearch(componentName, scope);
   }
 
@@ -744,6 +763,9 @@ public class HaxeExpressionEvaluator {
     // we need to find  where the literal is used to find correct type
     if (objectLiteral.getParent() instanceof HaxeAssignExpression assignExpression) {
       objectLiteralType = handleWithRecursionGuard(assignExpression.getLeftExpression(), context, resolver);
+    }
+    if (objectLiteral.getParent() instanceof HaxeReturnStatement returnStatement) {
+      return getExpectedTypeForReturn(returnStatement);
     }
     if (objectLiteral.getParent() instanceof HaxeVarInit varInit) {
       HaxePsiField field = PsiTreeUtil.getParentOfType(varInit, HaxePsiField.class);
