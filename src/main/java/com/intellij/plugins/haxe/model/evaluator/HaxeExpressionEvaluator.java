@@ -61,6 +61,18 @@ public class HaxeExpressionEvaluator {
     return evaluate(element, null);
   }
   @NotNull
+  static public SpecificTypeReference evaluateFullyResolved(PsiElement element) {
+    ResultHolder result = evaluate(element, null).result;
+    if(result != null && !result.isUnknown()) {
+      if(result.getClassType()!= null && result.isTypeDef()) {
+        return result.getClassType().fullyResolveTypeDefAndUnwrapNullTypeReference();
+      }
+      return result.getType();
+    }
+    return createUnknown(element).getType();
+  }
+
+  @NotNull
   static public HaxeExpressionEvaluatorContext evaluate(@NotNull PsiElement element, @Nullable HaxeGenericResolver resolver) {
     ProgressIndicatorProvider.checkCanceled();
     HaxeExpressionEvaluatorContext context = new HaxeExpressionEvaluatorContext(element);
@@ -365,6 +377,9 @@ public class HaxeExpressionEvaluator {
 
     if (element instanceof HaxePrefixExpression prefixExpression) {
       return handlePrefixExpression(context, resolver, prefixExpression);
+    }
+    if (element instanceof HaxePostfixExpression postfixExpression) {
+      return handlePostfixExpression(context, resolver, postfixExpression);
     }
 
     if (element instanceof HaxeIsTypeExpression) {

@@ -184,27 +184,11 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
   }
 
   public boolean resolveIsStaticExtension() {
-    if (this instanceof HaxeCallExpression) {
-      PsiReference referenceChain = this.getFirstChild().getReference();
-      if (referenceChain instanceof HaxeReferenceExpression referenceExpression) {
-        PsiElement method = referenceExpression.resolve();
-        if (method instanceof HaxeMethod haxeMethod) {
-          if (!haxeMethod.isStatic()) return false; // only static methods can be extensions (compiler: Cannot access static field XXX from a class instance)
-
-          PsiElement ChainBeforeMethod = referenceExpression.getChildren()[0];
-          if (ChainBeforeMethod instanceof  HaxeIdentifier) return false; // not chain, got method identifer
-          if (ChainBeforeMethod instanceof HaxeReferenceExpression referenceExpression1) {
-            PsiElement caller = referenceExpression1.resolve();
-            if (caller == method) return false; // probably a function bind or similar
-            // todo find using import statement for methods declaring class and confirm "using"
-            return !(caller instanceof HaxeClass || caller instanceof HaxeImportAlias);
-          }else {
-            return true;
-          }
-        }
-      }
+    if (this instanceof HaxeCallExpression callExpression) {
+      return HaxeReferenceUtil.isStaticExtension(callExpression);
+    } else {
+      return false;
     }
-    return false;
   }
 
 
@@ -1019,7 +1003,8 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
       String name = haxeClass.getName();
       return name != null
              && !(parent instanceof HaxeType)
-             && !(parent instanceof HaxeReference)
+             // new expressions extends HaxeReference so we need allow that one even though we want to exclude all HaxeReferences
+             && (parent instanceof HaxeNewExpression || !(parent instanceof HaxeReference))
              && getLastChild().textMatches(name);
     }
   }

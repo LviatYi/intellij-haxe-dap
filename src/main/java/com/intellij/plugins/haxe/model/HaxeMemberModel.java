@@ -20,6 +20,7 @@
 package com.intellij.plugins.haxe.model;
 
 import com.intellij.plugins.haxe.lang.psi.*;
+import com.intellij.plugins.haxe.lang.psi.impl.HaxeModuleImpl;
 import com.intellij.plugins.haxe.metadata.HaxeMetadataList;
 import com.intellij.plugins.haxe.metadata.psi.HaxeMeta;
 import com.intellij.plugins.haxe.metadata.psi.HaxeMetadataCompileTimeMeta;
@@ -37,6 +38,7 @@ import org.jetbrains.annotations.Nullable;
 import static com.intellij.plugins.haxe.lang.psi.HaxePsiModifier.*;
 import static com.intellij.plugins.haxe.metadata.psi.HaxeMeta.OP;
 import static com.intellij.plugins.haxe.metadata.psi.HaxeMeta.OPTIONAL;
+import static com.intellij.plugins.haxe.metadata.psi.HaxeMeta.CORE_TYPE;
 
 abstract public class HaxeMemberModel extends HaxeBaseMemberModel {
 
@@ -74,10 +76,13 @@ abstract public class HaxeMemberModel extends HaxeBaseMemberModel {
   public boolean hasOperatorMeta() {
     return getNamedComponentPsi().hasCompileTimeMetadata(OP);
   }
+  public boolean hasCoreTypeMeta() {
+    return getNamedComponentPsi().hasCompileTimeMetadata(CORE_TYPE);
+  }
   public boolean hasOptionalMeta() {
     return getNamedComponentPsi().hasCompileTimeMetadata(OPTIONAL);
   }
-  public boolean isOperator(String operator) {
+  public boolean isOperator(HaxeOperator operator) {
     HaxeMetadataList list = getNamedComponentPsi().getMetadataList(HaxeMetadataCompileTimeMeta.class);
     return list.getCompileTimeMeta().stream()
       .filter(meta -> meta.isType(OP))
@@ -85,13 +90,30 @@ abstract public class HaxeMemberModel extends HaxeBaseMemberModel {
 
   }
 
-  private boolean hasOperatorMeta(HaxeMetadataContent content, String operator) {
-    HaxeBinaryExpression binaryExpression = PsiTreeUtil.findChildOfType(content, HaxeBinaryExpression.class);
-    if (binaryExpression == null) return false;
+  private boolean hasOperatorMeta(HaxeMetadataContent content, HaxeOperator operator) {
+    if(operator.getParent() instanceof HaxePostfixExpression) {
+      HaxePostfixExpression postfixExpression = PsiTreeUtil.findChildOfType(content, HaxePostfixExpression.class);
+      if (postfixExpression != null) {
+        HaxeOperator metaOperator = postfixExpression.getOperator();
+        return metaOperator.getTokenType() == operator.getTokenType() && metaOperator.textMatches(operator);
+      }
+    }
+    if(operator.getParent() instanceof HaxePrefixExpression) {
+      HaxePrefixExpression prefixExpression = PsiTreeUtil.findChildOfType(content, HaxePrefixExpression.class);
+      if (prefixExpression != null) {
+        HaxeOperator metaOperator = prefixExpression.getOperator();
+        return metaOperator.getTokenType() == operator.getTokenType() && metaOperator.textMatches(operator);
+      }
+    }
 
-    @NotNull PsiElement[] children = binaryExpression.getChildren();
-    if (children.length < 2) return false;
-    return children[1].textMatches(operator);
+
+    HaxeBinaryExpression binaryExpression = PsiTreeUtil.findChildOfType(content, HaxeBinaryExpression.class);
+    if (binaryExpression != null) {
+      HaxeOperator metaOperator = binaryExpression.getOperator();
+      return metaOperator.getTokenType() == operator.getTokenType() && metaOperator.textMatches(operator);
+    }
+
+    return false;
   }
 
   private boolean isOverriddenPublicMethod() {
@@ -111,11 +133,10 @@ abstract public class HaxeMemberModel extends HaxeBaseMemberModel {
     return  CachedValuesManager.getProjectPsiDependentCache(getMemberPsi(), HaxeMemberModel::_getDeclaringClass);
   }
 
-  ///TODO make  model reusable and cache result
   public HaxeModuleModel getDeclaringModule() {
-    HaxeModule module = PsiTreeUtil.getParentOfType(getMemberPsi(), HaxeModule.class);
+    HaxeModuleImpl module = PsiTreeUtil.getParentOfType(getMemberPsi(), HaxeModuleImpl.class);
     if (module == null) return null;
-    return new HaxeModuleModel(module);
+    return module.getModel();
   }
 
   private static HaxeClassModel _getDeclaringClass(PsiMember member) {
@@ -128,7 +149,8 @@ abstract public class HaxeMemberModel extends HaxeBaseMemberModel {
   }
 
   public boolean isInInterface() {
-    return getDeclaringClass().isInterface();
+    HaxeClassModel declaringClass = getDeclaringClass();
+    return declaringClass != null && declaringClass.isInterface();
   }
 
   public boolean hasModifier(@HaxePsiModifier.ModifierConstant String modifier) {
@@ -164,7 +186,7 @@ abstract public class HaxeMemberModel extends HaxeBaseMemberModel {
   @Nullable
   @Override
   public FullyQualifiedInfo getQualifiedInfo() {
-    if (getDeclaringClass() != null && isStatic() && isPublic()) {
+    if (getDeclaringClass() != null) {
       FullyQualifiedInfo containerInfo = getDeclaringClass().getQualifiedInfo();
       if (containerInfo != null) {
         return new FullyQualifiedInfo(containerInfo.packagePath, containerInfo.fileName, containerInfo.className, getName());

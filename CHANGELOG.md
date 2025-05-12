@@ -43,13 +43,35 @@
 
 * Changed: add support for HXCPP driven by Debug Adapter Protocol (DAP) for debugging.
 
+## 1.6.7
+* Fixed: Issue parsing postfix expressions after arrayAccess and callExpressions.
+* improvement: more accurate logic determining if `case` expression is captureVariable or references.
+* improvement: Better support for operator overloads
+
+## 1.6.6
+* Bugfix: Fixed issue where Class references where treated as instance references in new expressions
+* Fixed: Extension methods from `EnumValueTools` and `EnumTools` are now resolved without using imports (same as the compiler)
+* Fixed: TypeParameters are now kept when using `bind()` on method references.
+* Fixed: Incorrect caching of members resolved from typedefs
+* improvement: misc minor bugfixes and performance improvements.
+
+Known issues :
+- Extension methods from `EnumValueTools` and `EnumTools` are not included in completions without using statement.
+
+
+## 1.6.5
+* Added: Cppia target for OpenFL/Lime builds
+* Fixed: Direct cast to Abstract with typeParameters would fail for typeParameters with constraints.
+* Fixed: parser regression (inline callExpressions)
+* Improvement: misc fixes and better text formating for reader mode/ inline doc render
+
 ## 1.6.4
 * Improvement: Reworked documentation rendering and added support for reader mode.
 * Fixed: Parser issues with ternaryExpressions containing assignExpression.
 * Bugfix: Prevent incorrect type resolve for untyped parameters when parent callie is unknown
 
 ## 1.6.3
-* Added: Support for code folding for switch expressions, arrays, maps and object literals.
+* Added: Support for code folding for switch expressions, arrays, maps and object literals. 
 * Changed: formatter now removes spaces between expressions and semicolons
 * bugfix: Fixed error when trying to insert typeTag for objectLiterals
 * bugfix: Fixed incorrect priority in parser (ternaryExpressions must be parsed before coalescingExpressions)

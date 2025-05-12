@@ -206,6 +206,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
     myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
     doTestNoFixWithWarnings();
   }
+  @Test
+  public void testAbstractOperatorOverload() throws Exception {
+    doTestNoFixWithWarnings();
+  }
 
   @Test
   public void testAbstractFromToMetadata() throws Exception {
@@ -347,6 +351,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
 
   @Test
   public void testSimpleAssignUnknownGeneric() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+  @Test
+  public void testSameNameEnumValuesAndConstructors() throws Exception {
     doTestNoFixWithWarnings();
   }
 
@@ -805,6 +813,11 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   }
 
   @Test
+  public void testPostfixOperator() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
   public void testFunctionBind1() throws Exception {
     doTestNoFixWithWarnings();
   }
@@ -917,6 +930,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
   public void testCallExpression() throws Throwable {
     doTestNoFixWithWarnings();
   }
+  @Test
+  public void testNewExpression() throws Throwable {
+    doTestNoFixWithWarnings();
+  }
 
   @Test
   public void testTypeParameterConstraints() throws Throwable {
@@ -1007,10 +1024,23 @@ public class HaxeSemanticAnnotatorTest extends HaxeCodeInsightFixtureTestCase {
     doTestNoFixWithWarnings();
   }
 
+  @Test
+  public void testEnumToolsResolve() throws Throwable {
+    myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
+    doTestNoFixWithWarnings();
+  }
+
+
   // this might not be the right place for this test as its testing the resolver logic
   // but to verify the resolved results we need to do type compare
   @Test
   public void testEnumTypeHints() throws Throwable {
+    myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testEnumMatchPattern() throws Throwable {
     myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
     doTestNoFixWithWarnings();
   }

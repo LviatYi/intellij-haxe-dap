@@ -17,6 +17,7 @@
  */
 package com.intellij.plugins.haxe.model.type;
 
+import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.model.HaxeMethodModel;
 import com.intellij.plugins.haxe.model.HaxeParameterModel;
 import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluatorContext;
@@ -32,11 +33,12 @@ public class HaxeOperatorResolver {
     PsiElement elementContext,
     SpecificTypeReference left,
     SpecificTypeReference right,
-    String operator,
+    HaxeOperator operatorPsi,
     HaxeExpressionEvaluatorContext context
   ) {
 
     SpecificTypeReference result = null;
+    String operator = operatorPsi.getText();
 
     // while normal abstracts should not be resolved to underlying type, there's an exception for Null<T>
     // in this case we just "unwrap"  without trying to resolve
@@ -73,8 +75,10 @@ public class HaxeOperatorResolver {
 
     // avoid marking Enum Patterns as errors (EnumValue.match accepts these inputs)
     boolean bothAreEnumValues = left.isEnumValue() && right.isEnumValue();
-    if (bothAreEnumValues && (operator.equals("&") || operator.equals("|"))) {
-     return SpecificHaxeClassReference.getDynamic(elementContext);
+    if(isInEnumValueMatchCallExpression(context.root)) {
+      if (bothAreEnumValues &&  operator.equals("|")) {
+        return SpecificHaxeClassReference.getDynamic(elementContext);
+      }
     }
 
     if (canAssignLeftToInt && canAssignRightToInt) {
@@ -121,7 +125,7 @@ public class HaxeOperatorResolver {
     }
 
     // check overloads
-    SpecificTypeReference overloadResult = checkOverloads(left, right, operator);
+    SpecificTypeReference overloadResult = checkOverloads(left, right, operatorPsi);
     // if overload matched use result
     if (overloadResult != null) {
       result = overloadResult;
@@ -145,9 +149,27 @@ public class HaxeOperatorResolver {
     return result != null ? result : SpecificHaxeClassReference.getUnknown(elementContext);
   }
 
+  private static boolean isInEnumValueMatchCallExpression(PsiElement root) {
+    if(root.getParent() instanceof HaxeCallExpressionList list) {
+      if(list.getParent() instanceof HaxeCallExpression callExpression) {
+        if (callExpression.getExpression() instanceof HaxeReferenceExpression reference) {
+          PsiElement resolve = reference.resolve();
+          if(resolve instanceof HaxeMethodDeclaration declaration) {
+            HaxeMethodModel model = declaration.getModel();
+            String fullName = model.getFullName();
+            if(fullName.equals("EnumValue.match")) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   private static SpecificTypeReference checkOverloads(SpecificTypeReference type1,
                                                     SpecificTypeReference type2,
-                                                      String operator) {
+                                                      HaxeOperator operator) {
     List<HaxeMethodModel> overloads = new ArrayList<>();
     if (type1 instanceof  SpecificHaxeClassReference classReference) {
       overloads.addAll(classReference.getOperatorOverloads(operator));
@@ -161,7 +183,7 @@ public class HaxeOperatorResolver {
       for (HaxeMethodModel overload : overloads) {
         // non-static methods takes 1 arg "this" is left, parameter is right
         if (overload.getParameters().size() == 1) {
-          HaxeParameterModel param = overload.getParameters().get(0);
+          HaxeParameterModel param = overload.getParameters().getFirst();
           boolean rightMatches = param.getType().canAssign(type2.createHolder());
           if (rightMatches) {
             return overload.getReturnType(null).getType();

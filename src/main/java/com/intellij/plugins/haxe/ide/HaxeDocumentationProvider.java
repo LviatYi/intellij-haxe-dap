@@ -32,6 +32,7 @@ import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluatorContext;
 import com.intellij.plugins.haxe.model.type.ResultHolder;
 import com.intellij.plugins.haxe.util.HaxeResolveUtil;
 import com.intellij.psi.*;
+import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
@@ -141,13 +142,11 @@ public class HaxeDocumentationProvider implements DocumentationProvider {
     if(comment instanceof  haxePsiDocCommentImpl haxeDocComment) {
       HaxeDocumentationRenderer renderer = haxeDocComment.getProject().getService(HaxeDocumentationRenderer.class);
 
-      String docs = haxeDocComment.getDocsWithoutIndents();
-      HtmlBuilder tmpBuilder = new HtmlBuilder();
-      String rendered = renderer.parseAndRenderDocs(docs);
-      HtmlChunk.Element content = tmpBuilder.appendRaw(rendered).wrapWith(HtmlChunk.Element.div().attr("class", "content"));
-      tmpBuilder.append(content);
-
-      return new HtmlBuilder().append(content).toString();
+      String rawDocContent = haxeDocComment.getDocsWithoutIndents();
+      HtmlBuilder htmlBuilder = new HtmlBuilder();
+      String rendered = renderer.parseAndRenderDocs(rawDocContent, comment);
+      htmlBuilder.appendRaw(rendered);
+      return htmlBuilder.toString();
     }
     return null;
   }
@@ -268,11 +267,10 @@ public class HaxeDocumentationProvider implements DocumentationProvider {
   private static void appendDocumentation(HaxeNamedComponent namedComponent, HaxeDocumentationRenderer service, HtmlBuilder htmlBuilder) {
     final PsiComment comment = HaxeResolveUtil.findDocumentation(namedComponent);
     if(comment instanceof  haxePsiDocCommentImpl haxeDocComment) {
-      HtmlBuilder tmpBuilder = new HtmlBuilder();
-      String docs = haxeDocComment.getDocsWithoutIndents();
-      String rendered = service.parseAndRenderDocs(docs);
-      HtmlChunk.Element content = tmpBuilder.appendRaw(rendered).wrapWith(HtmlChunk.Element.div().attr("class", "content"));
-      htmlBuilder.append(content);
+      String rawDocContent = haxeDocComment.getDocsWithoutIndents();
+      HaxeDocumentationRenderer renderer = haxeDocComment.getProject().getService(HaxeDocumentationRenderer.class);
+      String rendered = renderer.parseAndRenderDocs(rawDocContent, haxeDocComment);
+      htmlBuilder.appendRaw(rendered);
     }
   }
 
@@ -286,9 +284,6 @@ public class HaxeDocumentationProvider implements DocumentationProvider {
       HaxeMethodModel methodModel = methodDeclaration.getModel();
       if (methodModel != null) {
         appendMethodInfo(builder, renderer, methodModel);
-      }
-      else {
-        HaxeComponentName componentName = methodDeclaration.getComponentName();
       }
     }
   }
@@ -463,12 +458,19 @@ public class HaxeDocumentationProvider implements DocumentationProvider {
 
   @Override
   public PsiElement getDocumentationElementForLink(PsiManager psiManager, String link, PsiElement context) {
-
+    GlobalSearchScope resolveScope = context.getResolveScope();
 
     final FullyQualifiedInfo qualifiedInfo = new FullyQualifiedInfo(link);
-    List<HaxeModel> result = HaxeProjectModel.fromElement(context).resolve(qualifiedInfo, context.getResolveScope());
+    if(context instanceof PsiDocCommentBase commentBase) {
+      PsiElement owner = commentBase.getOwner();
+      if(owner != null) {
+        resolveScope =  owner.getResolveScope();
+      }
+    }
+
+    List<HaxeModel> result = HaxeProjectModel.fromElement(context).resolve(qualifiedInfo, resolveScope);
     if (result != null && !result.isEmpty()) {
-      HaxeModel item = result.get(0);
+      HaxeModel item = result.getFirst();
       if (item instanceof HaxeFileModel) {
         HaxeClassModel mainClass = ((HaxeFileModel)item).getMainClassModel();
         if (mainClass != null) {
