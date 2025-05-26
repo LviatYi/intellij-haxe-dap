@@ -559,7 +559,7 @@ oldFunctionTypeArgument ::=  oldRestArgumentType | (optionalMark? ('(' functionT
  *
  */
 
-typeTag ::= ':' typeWrapper
+typeTag ::= ':' ('(' typeWrapper ')' | typeWrapper)
 typeParam ::= '<' typeList '>'
 {
 methods=[typeList="typeListPart"]
