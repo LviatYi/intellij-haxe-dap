@@ -70,6 +70,7 @@ import com.intellij.plugins.haxe.lang.psi.impl.HaxeIdentifierImpl;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxePsiTokenImpl;
 import com.intellij.plugins.haxe.runner.DirectRunningState;
 import com.intellij.plugins.haxe.runner.HaxeApplicationConfiguration;
+import com.intellij.plugins.haxe.runner.NMERunningState;
 import com.intellij.plugins.haxe.runner.OpenFLRunningState;
 import com.intellij.plugins.haxe.util.HaxeFileUtil;
 import com.intellij.plugins.haxe.util.HaxeResolveUtil;
@@ -94,9 +95,12 @@ import org.apache.commons.collections.map.HashedMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.BindException;
+import java.net.ServerSocket;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -202,9 +206,14 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     else if (hxcppDebug) {
       final Project project = env.getProject();
       if (settings.isUseDebugAdapterProtocol()) {
+        var remoteDebugging = configuration.isCustomRemoteDebugging();
+        var remoteUrl = configuration.getCustomRemoteUrl();
+        if (remoteUrl != null && remoteUrl.trim().isEmpty()) {
+          remoteUrl = "127.0.0.1";
+        }
         return runDapHxcpp(env.getProject(), module, settings, env, executor,
                            configuration.getCustomDebugPort(),
-                           configuration.isCustomRemoteDebugging());
+                           remoteDebugging ? remoteUrl : null);
       }
       else {
         return runHxcpp(project, module, settings, env, executor,
@@ -273,7 +282,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                // Start the debugger process, which is a class that
                // implements the actual debugger functionality.  In this
                // case, it does so by message passing through a socket.
-               final DapDebugProcess debugProcess = new DapDebugProcess
+               final DebugProcess debugProcess = new DebugProcess
                  (session, project, module, port);
 
                // If using remote debugging, emit a console message
@@ -296,23 +305,18 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                          // runInTest if android or ios
                          ((settings.getOpenFLTarget() == OpenFLTarget.ANDROID) ||
                           (settings.getOpenFLTarget() == OpenFLTarget.IOS)),
-                         true, port).execute(executor, HaxeDebugRunner.this));
+                         true, port).
+                        execute(executor, HaxeDebugRunner.this));
                  }
                  else {
-                   //debugProcess.setExecutionResult
-                   //  (new NMERunningState
-                   //     (env, module,
-                   //      // runInTest if android or ios
-                   //      ((settings.getNmeTarget() == NMETarget.ANDROID) ||
-                   //       (settings.getNmeTarget() == NMETarget.IOS)),
-                   //      true, port).
-                   //     execute(executor, HaxeDebugRunner.this));
-                   debugProcess.setExecutionResult(new DirectRunningState
+                   debugProcess.setExecutionResult
+                     (new NMERunningState
                         (env, module,
                          // runInTest if android or ios
                          ((settings.getNmeTarget() == NMETarget.ANDROID) ||
                           (settings.getNmeTarget() == NMETarget.IOS)),
-                         true, port).execute(executor, HaxeDebugRunner.this));
+                         true, port).
+                        execute(executor, HaxeDebugRunner.this));
                  }
                }
 
@@ -337,13 +341,13 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                                            final ExecutionEnvironment env,
                                            final Executor executor,
                                            final int port,
-                                           final boolean remoteDebugging) throws ExecutionException {
+                                           @Nullable final String remoteUrl) throws ExecutionException {
     final XDebugSession debugSession = XDebuggerManager.getInstance(project).startSession(env, new XDebugProcessStarter() {
       @NotNull
       public XDebugProcess start(@NotNull final XDebugSession session) throws ExecutionException {
         try {
-          final DapDebugProcess debugProcess = new DapDebugProcess(session, project, module, port);
-          if (remoteDebugging) {
+          final DapDebugProcess debugProcess = new DapDebugProcess(session, project, module, port, remoteUrl);
+          if (remoteUrl != null) {
             showInfoMessage(project, "Listening for debugged process " +
                                      "on port " +
                                      port +
@@ -1396,40 +1400,16 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
   private class DapDebugProcess extends XDebugProcess {
     private static final String NON_EXIST_VALUE = "NONEXISTENT_VALUE";
 
-    public DapDebugProcess(@NotNull XDebugSession session, Project project, Module module, int port) throws IOException {
+    public DapDebugProcess(@NotNull XDebugSession session, Project project, Module module, int port, @Nullable String remoteUrl)
+      throws IOException {
       super(session);
       this.project = project;
       this.module = module;
+      this.port = port;
+      this.remoteUrl = remoteUrl;
       deferredQueue = new LinkedList<>();
-      try {
-        serverSocket = new java.net.ServerSocket(port);
-      }
-      catch (BindException e) {
-        throw new  BindException("Port " + port + " is already in use.");
-        //System.err.println("Port " + port + " is already in use. Trying to force kill...");
-        //try {
-        //  Process p = Runtime.getRuntime().exec("netstat -ano | findstr :" + port);
-        //  BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
-        //  String line;
-        //  while ((line = reader.readLine()) != null) {
-        //    if (line.trim().length() > 0) {
-        //      String[] tokens = line.trim().split("\\s+");
-        //      String pid = tokens[tokens.length - 1];
-        //
-        //      Process kill = Runtime.getRuntime().exec("taskkill /PID " + pid + " /F");
-        //      kill.waitFor();
-        //      System.out.println("Killed process with PID: " + pid);
-        //    }
-        //  }
-        //}
-        //catch (IOException | InterruptedException ex) {
-        //  ex.printStackTrace();
-        //}
-        //
-        //serverSocket = new java.net.ServerSocket(port);
-      }
       breakpointHandlers = this.createBreakpointHandlers();
-      callbacks = new HashMap<Integer, DapHaxeProtocol.CommandCallback>();
+      callbacks = new HashMap<>();
       writeQueue = QueueProcessor.createRunnableQueueProcessor(QueueProcessor.ThreadToUse.POOLED);
     }
 
@@ -1603,25 +1583,44 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     }
 
     private void readLoop() throws IOException {
-      java.net.ServerSocket serverSocket;
       synchronized (this) {
-        serverSocket = this.serverSocket;
+        try {
+          if (remoteUrl != null) {
+            this.debugSocket = new java.net.Socket();
+            this.debugSocket.connect(new java.net.InetSocketAddress(remoteUrl, port), 3000);
+          }
       }
+        catch (BindException e) {
+          killProcessUsePort(port);
+          this.debugSocket = null;
+        }
+        catch (Exception e) {
+          this.debugSocket = null;
+        }
+      }
+      
       // Don't synchronize around the accept.  It locks up the rest of the debugger still
       // running on the AWT thread if the application isn't starting correctly.
-      java.net.Socket debugSocket = serverSocket.accept();
+      if (debugSocket == null) {
+        var port = remoteUrl == null ? this.port : 6972;
+
+        try {
+          serverSocket = new ServerSocket(port);
+          debugSocket = serverSocket.accept();
+        }
+        catch (BindException e) {
+          killProcessUsePort(port);
+          this.debugSocket = null;
+        }
+      }
+
       synchronized (this) {
-        this.debugSocket = debugSocket;
-        this.serverSocket.close();
+        if (this.serverSocket != null) {
+          this.serverSocket.close();
+        }
         this.serverSocket = null;
       }
-      while (true) {
-        synchronized (this) {
-          debugSocket = this.debugSocket;
-        }
-        if (debugSocket == null) {
-          break;
-        }
+      while (debugSocket != null) {
 
         var message = DapHaxeProtocol.readMessage(debugSocket.getInputStream());
         if (message != null) {
@@ -2123,6 +2122,8 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
 
     private final Project project;
     private final Module module;
+    private String remoteUrl;
+    private int port;
     private LinkedList<Pair<DapHaxeCommand, DapHaxeProtocol.CommandCallback>> deferredQueue;
     private java.net.ServerSocket serverSocket;
     private java.net.Socket debugSocket;
@@ -2171,5 +2172,27 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           .addMessage(MessageCategory.INFORMATION, new String[]{message}, null, null, null, null, UUID.randomUUID());
       }
     });
+  }
+
+  private static void killProcessUsePort(int port) {
+    System.out.println("Port " + port + " is already in use. Trying to force kill...");
+    try {
+      Process p = Runtime.getRuntime().exec("netstat -ano | findstr :" + port);
+      BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+      String line;
+      while ((line = reader.readLine()) != null) {
+        if (!line.trim().isEmpty()) {
+          String[] tokens = line.trim().split("\\s+");
+          String pid = tokens[tokens.length - 1];
+
+          Process kill = Runtime.getRuntime().exec("taskkill /PID " + pid + " /F");
+          kill.waitFor();
+          System.out.println("Killed process with PID: " + pid);
+        }
+      }
+    }
+    catch (IOException | InterruptedException ex) {
+      System.out.println("Force kill failed: " + ex.getMessage());
+    }
   }
 }

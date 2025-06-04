@@ -34,13 +34,19 @@ import com.intellij.plugins.haxe.ide.module.HaxeModuleSettings;
 import com.intellij.plugins.haxe.ide.module.HaxeModuleType;
 import com.intellij.plugins.haxe.runner.HaxeApplicationConfiguration;
 import com.intellij.ui.SimpleListCellRenderer;
+import com.intellij.util.io.URLUtil;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
+import java.util.Objects;
 
 public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicationConfiguration> {
+  private static final String LocalHostUrl = "127.0.0.1";
+  
   private JPanel component;
   private JComboBox myComboModules;
   private JCheckBox myCustomPathCheckBox;
@@ -51,12 +57,13 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
   private TextFieldWithBrowseButton myWorkingDirectoryField;
   private JTextField myDebugListenPort;
   private JCheckBox myRemoteDebuggingCheckBox;
+  private JTextField myCustomRemoteUrlField;
 
   private String customPathToFile = "";
   private String customPathToExecutable = "";
   private String customWorkDirectory = "";
+  private String customRemoteUrl = LocalHostUrl;
   private int customDebugListenPort;
-  private boolean customRemoteDebugging;
 
   private final Project project;
 
@@ -149,29 +156,55 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
       }
     });
 
-    myDebugListenPort.addActionListener(new ActionListener() {
+    myCustomRemoteUrlField.addFocusListener(new FocusListener() {
       @Override
-      public void actionPerformed(ActionEvent e) {
-          String portString = myDebugListenPort.getText();
-          if (portString == "") {
-              portString = "6972";
-          }
-          Integer port;
-          try {
-              port = Integer.parseInt(portString);
-          }
-          catch (NumberFormatException ex) {
-              port = 6972;
-          }
-          customDebugListenPort = port;
-          myDebugListenPort.setText("" + port);
+      public void focusGained(FocusEvent e) {
+      }
+
+      @Override
+      public void focusLost(FocusEvent e) {
+        String url = myCustomRemoteUrlField.getText();
+        if (url == null || url.isEmpty() || url.equalsIgnoreCase("localhost")) {
+          url = LocalHostUrl;
+        }
+        if (!customRemoteUrl.equals(url)) {
+          customRemoteUrl = url;
+          updateComponents();
+        }
+      }
+    });
+
+    myDebugListenPort.addFocusListener(new FocusListener() {
+      @Override
+      public void focusGained(FocusEvent e) {
+      }
+
+      @Override
+      public void focusLost(FocusEvent e) {
+        String portString = myDebugListenPort.getText();
+        if (Objects.equals(portString, "")) {
+          portString = "6972";
+        }
+        Integer port;
+        try {
+          port = Integer.parseInt(portString);
+        }
+        catch (NumberFormatException ex) {
+          port = 6972;
+        }
+        customDebugListenPort = port;
+        myDebugListenPort.setText("" + port);
       }
     });
 
     myRemoteDebuggingCheckBox.addActionListener(new ActionListener() {
       @Override
       public void actionPerformed(ActionEvent e) {
-          customRemoteDebugging = myRemoteDebuggingCheckBox.isSelected();
+        myCustomRemoteUrlField.setEnabled(myRemoteDebuggingCheckBox.isSelected());
+        if (customRemoteUrl == null || customRemoteUrl.isEmpty()) {
+          customRemoteUrl = LocalHostUrl;
+        }
+        updateComponents();
       }
     });
 
@@ -194,8 +227,9 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
     customDebugListenPort = configuration.getCustomDebugPort();
     myDebugListenPort.setText("" + customDebugListenPort);
 
-    customRemoteDebugging = configuration.isCustomRemoteDebugging();
-    myRemoteDebuggingCheckBox.setSelected(customRemoteDebugging);
+    myRemoteDebuggingCheckBox.setSelected(configuration.isCustomRemoteDebugging());
+    myCustomRemoteUrlField.setEnabled(configuration.isCustomRemoteDebugging());
+    customRemoteUrl = configuration.getCustomRemoteUrl();
 
     updateComponents();
   }
@@ -204,6 +238,7 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
     updateCustomPathToFile();
     updateCustomPathToExecutable();
     updateCustomWorkDirectory();
+    updateCustomRemoteUrl();
   }
 
   private void updateCustomPathToFile() {
@@ -231,6 +266,10 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
   private void updateCustomWorkDirectory() {
     myWorkingDirectoryField.setText(myWorkingDirectoryCheckBox.isSelected() ? FileUtil.toSystemDependentName(customWorkDirectory) : "");
     myWorkingDirectoryField.setEnabled(myWorkingDirectoryCheckBox.isSelected());
+  }
+
+  private void updateCustomRemoteUrl() {
+    myCustomRemoteUrlField.setText(customRemoteUrl);
   }
 
   @Override
@@ -261,8 +300,9 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
     catch (NumberFormatException ex) {
         port = 6972;
     }
+    configuration.setCustomRemoteDebugging(myRemoteDebuggingCheckBox.isSelected());
+    configuration.setCustomRemoteUrl(customRemoteUrl);
     configuration.setCustomDebugPort(port);
-    configuration.setCustomRemoteDebugging(customRemoteDebugging);
   }
 
   private Module getSelectedModule() {

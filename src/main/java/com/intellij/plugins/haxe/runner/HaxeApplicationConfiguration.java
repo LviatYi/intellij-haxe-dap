@@ -51,6 +51,7 @@ public class HaxeApplicationConfiguration extends HaxeApplicationConfigurationBa
   private String customWorkingDirectory = "";
   private boolean customExecutable = false;
   private boolean customUseWorkingDir = false;
+  private String customRemoteUrl = "127.0.0.1";
   private int customDebugPort = 6972;
   private boolean customRemoteDebugging = false;
 
@@ -144,6 +145,14 @@ public class HaxeApplicationConfiguration extends HaxeApplicationConfigurationBa
 
   public void setCustomWorkingDirectory(String customWorkingDirectory) {
     this.customWorkingDirectory = customWorkingDirectory;
+  }
+
+  public String getCustomRemoteUrl() {
+    return customRemoteUrl;
+  }
+
+  public void setCustomRemoteUrl(String customRemoteUrl) {
+    this.customRemoteUrl = customRemoteUrl;
   }
 
   public int getCustomDebugPort() {

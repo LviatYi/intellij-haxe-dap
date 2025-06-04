@@ -93,22 +93,9 @@ public class DirectRunningState extends CommandLineState {
   private HaxeCommandLine getCommand(HaxeApplicationConfiguration config) throws ExecutionException {
     final HaxeCommandLine commandLine = new HaxeCommandLine(module);
 
-    //VirtualFile workDir = ProjectUtil.guessModuleDir(module);
-    //if(workDir == null) {
-    //  throw new ExecutionException("Unable to to determine workdirectory");
-    //}
-    //commandLine.setWorkDirectory(workDir.getCanonicalPath());
-
     commandLine.setWorkDirectory(config.getCustomWorkingDirectory());
     commandLine.setExePath(config.getCustomFileToLaunchPath());
     commandLine.addParameter("/Log2VSC:True");
-    //commandLine.setExePath("C:/Workspace/self-tools/bin/echoEnv.cmd");
-    //commandLine.setExePath("cmd.exe");
-    //commandLine.addParameters(
-    //  "/c",
-    //  "start",
-    //  "C:/Users/jiajunyi/Desktop/Temp/pc1/FIFAMobile.exe"
-    //);
 
     final TextConsoleBuilder consoleBuilder = TextConsoleBuilderFactory.getInstance().createBuilder(module.getProject());
     setConsoleBuilder(consoleBuilder);
