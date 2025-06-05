@@ -35,13 +35,18 @@ import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.PluginManagerCore;
+import com.intellij.notification.NotificationGroupManager;
+import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootManager;
+import com.intellij.openapi.ui.MessageType;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.ui.popup.Balloon;
+import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.TextRange;
@@ -79,6 +84,7 @@ import com.intellij.psi.search.FilenameIndex;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.ui.ColoredTextContainer;
 import com.intellij.ui.SimpleTextAttributes;
+import com.intellij.ui.awt.RelativePoint;
 import com.intellij.util.concurrency.QueueProcessor;
 import com.intellij.util.io.URLUtil;
 import com.intellij.util.ui.MessageCategory;
@@ -1641,6 +1647,12 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               catch (Exception ignored) {
               }
 
+              // Error Dialog
+              String finalMsg = msg;
+              ApplicationManager.getApplication().invokeLater(() -> {
+                Messages.showErrorDialog(project, finalMsg, "Haxe Exception");
+              });
+              
               if (StringUtil.isEmpty(msg)) {
                 this.info("Exception stop." + msg);
               }
