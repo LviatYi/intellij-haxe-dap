@@ -9,6 +9,7 @@
   like `funcWithClosureParamWithParentheses(input:Int, callback:(Int -> Bool) = null):Void`
 * Changed: Use Socket insteadof ServerSocket when remote debugging.
 * Added: set Work Dir when run directly.
+* Added: show Error Dialog when debugger server got a haxe crash.
 
 ## 2.0.6(1.6b)
 
