@@ -5,6 +5,10 @@
 ## 2.0.7(1.6b)
 
 * Changed: Merge Intellij-Haxe 1.6.4 into this repo.
+* Added: add support for typeTag may contained parentheses  
+  like `funcWithClosureParamWithParentheses(input:Int, callback:(Int -> Bool) = null):Void`
+* Changed: Use Socket insteadof ServerSocket when remote debugging.
+* Added: set Work Dir when run directly.
 
 ## 2.0.6(1.6b)
 
