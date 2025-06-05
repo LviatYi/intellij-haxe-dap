@@ -93,11 +93,21 @@ public class HaxeRunner extends GenericProgramRunner<RunnerSettings> {
         @Override
         protected ProcessHandler startProcess() throws ExecutionException {
           final HaxeCommandLine commandLine = new HaxeCommandLine(module);
-          VirtualFile workDir = ProjectUtil.guessModuleDir(module);
-          if(workDir == null) {
+
+          String workDirPath = configuration.isCustomUseWorkingDir()
+                               ? configuration.getCustomWorkingDirectory()
+                               : null;
+          if (!configuration.isCustomUseWorkingDir()) {
+            VirtualFile workDir = ProjectUtil.guessModuleDir(module);
+            if (workDir != null) {
+              workDirPath = workDir.getCanonicalPath();
+            }
+          }
+          if (workDirPath == null) {
             throw new ExecutionException("Unable to to determine workdirectory");
           }
-          commandLine.withWorkDirectory(workDir.getCanonicalPath());
+
+          commandLine.withWorkDirectory(workDirPath);
           commandLine.setExePath(configuration.getCustomExecutablePath());
           commandLine.addParameter(filePath);
 
@@ -110,8 +120,35 @@ public class HaxeRunner extends GenericProgramRunner<RunnerSettings> {
     }
 
     if (configuration.isCustomFileToLaunch()) {
-      BrowserUtil.open(configuration.getCustomFileToLaunchPath());
-      return null;
+      return executeState(new CommandLineState(environment) {
+        @NotNull
+        @Override
+        protected ProcessHandler startProcess() throws ExecutionException {
+          final HaxeCommandLine commandLine = new HaxeCommandLine(module);
+          String workDirPath = configuration.isCustomUseWorkingDir()
+                               ? configuration.getCustomWorkingDirectory()
+                               : null;
+          if (!configuration.isCustomUseWorkingDir()) {
+            VirtualFile workDir = ProjectUtil.guessModuleDir(module);
+            if (workDir != null) {
+              workDirPath = workDir.getCanonicalPath();
+            }
+          }
+          if (workDirPath == null) {
+            throw new ExecutionException("Unable to to determine workdirectory");
+          }
+          commandLine.withWorkDirectory(workDirPath);
+          commandLine.setExePath(configuration.getCustomFileToLaunchPath());
+
+          final TextConsoleBuilder consoleBuilder = TextConsoleBuilderFactory.getInstance().createBuilder(module.getProject());
+          setConsoleBuilder(consoleBuilder);
+
+          final var processHandler = new ColoredProcessHandler(commandLine.createProcess(), commandLine.getCommandLineString());
+          processHandler.startNotify();
+
+          return processHandler;
+        }
+      }, environment, this);
     }
 
     if (settings.getHaxeTarget() == HaxeTarget.FLASH) {
