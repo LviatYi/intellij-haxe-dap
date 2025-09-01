@@ -87,7 +87,7 @@ public class HaxeApplicationConfiguration extends HaxeApplicationConfigurationBa
       throw new RuntimeConfigurationException(HaxeBundle.message("haxe.run.no.module", getName()));
     }
     final HaxeModuleSettings settings = HaxeModuleSettings.getInstance(module);
-    if (settings.isUseHxmlToBuild() && !settings.getCompilationTarget().isNoOutput() && !customFileToLaunch) {
+    if (settings.isUseHxmlToBuild() && !settings.getCompilationTarget().isNoOutput() && !customFileToLaunch && !isCustomRemoteDebugging()) {
       throw new RuntimeConfigurationException(HaxeBundle.message("haxe.run.select.custom.file"));
     }
     if (settings.isUseNmmlToBuild() && customFileToLaunch) {

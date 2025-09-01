@@ -1599,6 +1599,16 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         catch (BindException e) {
           killProcessUsePort(port);
           this.debugSocket = null;
+          JBPopupFactory.getInstance()
+            .createHtmlTextBalloonBuilder("Port " + port + " is already in use. Already tried to run the kill program. Please try again.",
+                                          MessageType.ERROR,
+                                          null)
+            .setFadeoutTime(5000)
+            .createBalloon()
+            .show(RelativePoint.getSouthWestOf(
+                    WindowManager.getInstance().getIdeFrame(project).getComponent()),
+                  Balloon.Position.above);
+          throw new BindException();
         }
         catch (Exception e) {
           this.debugSocket = null;
@@ -1616,7 +1626,18 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         }
         catch (BindException e) {
           killProcessUsePort(port);
-          this.debugSocket = null;
+          debugSocket = null;
+          JBPopupFactory.getInstance()
+            .createHtmlTextBalloonBuilder("Port " + port + " is already in use. Already tried to run the kill program. Please try again.",
+                                          MessageType.ERROR,
+                                          null)
+            .setFadeoutTime(5000)
+            .createBalloon()
+            .show(RelativePoint.getSouthWestOf(
+                    WindowManager.getInstance().getIdeFrame(project).getComponent()),
+                  Balloon.Position.above);
+          throw new BindException();
+
         }
       }
 
@@ -2189,7 +2210,10 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
   private static void killProcessUsePort(int port) {
     System.out.println("Port " + port + " is already in use. Trying to force kill...");
     try {
-      Process p = Runtime.getRuntime().exec("netstat -ano | findstr :" + port);
+      ProcessBuilder pb = new ProcessBuilder(
+        "cmd.exe", "/c", "netstat -ano | findstr :" + port);
+      Process p = pb.start();
+      
       BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
       String line;
       while ((line = reader.readLine()) != null) {
