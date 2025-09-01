@@ -109,10 +109,12 @@ public abstract class HaxeImportStatementPsiMixinImpl extends HaxeStatementPsiMi
     for (int i = 0; i < ancestorIndex; i++) {
       PsiElement brother = brothers.get(i);
       if (brother instanceof PsiComment) {
-        if (brother.getText().equals("#end")) {
+        if (brother.getText().startsWith("#end")) {
           return false;
         }
-        else if (brother.getText().equals("#if")) {
+        else if (brother.getText().startsWith("#if")
+                 || brother.getText().startsWith("#elseif")
+                 || brother.getText().startsWith("#else")) {
           return true;
         }
       }
