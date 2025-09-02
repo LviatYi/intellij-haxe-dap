@@ -69,9 +69,6 @@ public class HaxeImportOptimizer implements ImportOptimizer {
   private static void optimizeImports(final PsiFile file) {
     HaxeDebugTimeLog timeLog = HaxeDebugTimeLog.startNew("optimizeImports for file " + file.getName(),
                                                          HaxeDebugTimeLog.Since.StartAndPrevious);
-
-    var macroIndex = MacroIndex.buildMacroIndex((HaxeFile)file);
-    
     removeUnusedImports(file);
     reorderImports2(file);
 
