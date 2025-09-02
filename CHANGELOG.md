@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+* Changed: Modify the import sorting function. Now, the import statements within the conditional macro will be ignored and will not be
+  placed in the sort.
+
 ## 2.0.7(1.6b)
 
 * Changed: Merge Intellij-Haxe 1.6.4 into this repo.
