@@ -18,7 +18,6 @@
  */
 package com.intellij.plugins.haxe.runner.debugger;
 
-import com.intellij.codeInsight.hint.HintManager;
 import com.intellij.compiler.ProblemsView;
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.ExecutionResult;
@@ -35,8 +34,6 @@ import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.PluginManagerCore;
-import com.intellij.notification.NotificationGroupManager;
-import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.extensions.PluginId;
@@ -71,7 +68,6 @@ import com.intellij.plugins.haxe.lang.psi.HaxeComponentName;
 import com.intellij.plugins.haxe.lang.psi.HaxeFieldDeclaration;
 import com.intellij.plugins.haxe.lang.psi.HaxePsiCompositeElement;
 import com.intellij.plugins.haxe.lang.psi.HaxeReferenceExpression;
-import com.intellij.plugins.haxe.lang.psi.impl.HaxeIdentifierImpl;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxePsiTokenImpl;
 import com.intellij.plugins.haxe.runner.DirectRunningState;
 import com.intellij.plugins.haxe.runner.HaxeApplicationConfiguration;
@@ -79,7 +75,10 @@ import com.intellij.plugins.haxe.runner.NMERunningState;
 import com.intellij.plugins.haxe.runner.OpenFLRunningState;
 import com.intellij.plugins.haxe.util.HaxeFileUtil;
 import com.intellij.plugins.haxe.util.HaxeResolveUtil;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiDocumentManager;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiManager;
 import com.intellij.psi.search.FilenameIndex;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.ui.ColoredTextContainer;
@@ -100,6 +99,7 @@ import haxe.root.JavaProtocol;
 import org.apache.commons.collections.map.HashedMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
 import javax.swing.*;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -1917,13 +1917,6 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         }
 
         sourcePosition = XSourcePositionImpl.create(file, frameInfo.line - 1);
-
-        if (null != file) {
-          psiFile = PsiManager.getInstance(project).findFile(file);
-        }
-        else {
-          psiFile = null;
-        }
       }
 
       public Object getEqualityObject() {
@@ -1992,11 +1985,12 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                                                                 int offset,
                                                                 boolean sideEffectsAllowed) {
             PsiFile curPsiFile = PsiDocumentManager.getInstance(project).getPsiFile(document);
-            if (psiFile == null || curPsiFile == null || curPsiFile != psiFile) {
+            var stackFrameVirtualFile = curPsiFile.getVirtualFile();
+            if (stackFrameVirtualFile == null || !stackFrameVirtualFile.equals(curPsiFile.getVirtualFile())) {
               return null;
             }
 
-            PsiElement endElement = psiFile.findElementAt(offset);
+            PsiElement endElement = curPsiFile.findElementAt(offset);
             if (!(endElement instanceof HaxePsiTokenImpl)) {
               return null;
             }
@@ -2164,7 +2158,6 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
       private final StackTraceInfo frameInfo;
       private final XSourcePosition sourcePosition;
       private final Map<Integer, XValueChildrenList> xvalueChildrenMap = new HashedMap();
-      @Nullable private final PsiFile psiFile;
     }
 
     private final Project project;
