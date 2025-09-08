@@ -23,6 +23,8 @@ public class StackTraceInfo {
 
   private String _funcName = null;
 
+  private String _fileName = null;
+
   public String getClassName() {
     if (_className == null) {
       parseName();
@@ -39,6 +41,14 @@ public class StackTraceInfo {
     return _funcName;
   }
 
+  public String getFileStem() {
+    if (_fileName == null) {
+      parseSource();
+    }
+
+    return _fileName;
+  }
+
   private void parseName() {
     var methodIndex = name.lastIndexOf('.');
     if (methodIndex != -1) {
@@ -49,6 +59,17 @@ public class StackTraceInfo {
     else {
       _className = "";
       _funcName = "";
+    }
+  }
+
+  private void parseSource() {
+    var fileIndex = source.lastIndexOf('/');
+    var fileName = source.substring(fileIndex + 1);
+    if (!fileName.isEmpty()) {
+      var fileStemIndex = fileName.lastIndexOf('.');
+      if (fileStemIndex != -1) {
+        _fileName = fileName.substring(0, fileStemIndex);
+      }
     }
   }
 }

@@ -2049,7 +2049,10 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         super.customizePresentation(component);
 
         if (this.frameInfo != null) {
-          component.append("  " + this.frameInfo.getClassName() + "." + this.frameInfo.getFuncName() + "()",
+          var className = this.frameInfo.getClassName();
+          var fileStem = this.frameInfo.getFileStem();
+          component.append(
+            "  " + (className.equals(fileStem) ? "" : this.frameInfo.getClassName() + ".") + this.frameInfo.getFuncName() + "()",
                            SimpleTextAttributes.REGULAR_ATTRIBUTES);
         }
       }
