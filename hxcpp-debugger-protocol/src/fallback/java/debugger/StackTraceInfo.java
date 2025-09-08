@@ -40,10 +40,11 @@ public class StackTraceInfo {
   }
 
   private void parseName() {
-    var spiltIndex = name.lastIndexOf('.');
-    if (spiltIndex != -1) {
-      _className = name.substring(0, spiltIndex);
-      _funcName = name.substring(spiltIndex + 1);
+    var methodIndex = name.lastIndexOf('.');
+    if (methodIndex != -1) {
+      var classIndex = name.lastIndexOf('.', methodIndex - 1);
+      _className = name.substring(classIndex + 1, methodIndex);
+      _funcName = name.substring(methodIndex + 1);
     }
     else {
       _className = "";

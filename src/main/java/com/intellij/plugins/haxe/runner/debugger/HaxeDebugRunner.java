@@ -2044,6 +2044,16 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           });
       }
 
+      @Override
+      public void customizePresentation(@NotNull ColoredTextContainer component) {
+        super.customizePresentation(component);
+
+        if (this.frameInfo != null) {
+          component.append("  " + this.frameInfo.getClassName() + "." + this.frameInfo.getFuncName() + "()",
+                           SimpleTextAttributes.REGULAR_ATTRIBUTES);
+        }
+      }
+
       private void computeChildrenCurrentFrame(@NotNull final XCompositeNode node, int variableRef) {
         xvalueChildrenMap.put(variableRef, new XValueChildrenList());
         DapDebugProcess.this.<GetVariablesParam, ValInfo[]>expectResult(
@@ -2147,8 +2157,8 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         private LinkedList<Value> children;
       }
 
-      private StackTraceInfo frameInfo;
-      private XSourcePosition sourcePosition;
+      private final StackTraceInfo frameInfo;
+      private final XSourcePosition sourcePosition;
       private final Map<Integer, XValueChildrenList> xvalueChildrenMap = new HashedMap();
       @Nullable private final PsiFile psiFile;
     }
