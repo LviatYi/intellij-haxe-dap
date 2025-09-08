@@ -1730,8 +1730,9 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
       }
 
       if (runToCursorPosition != null) {
+        var file = runToCursorPosition.getFile();
         runToCursorPosition = null;
-        this.updateBreakpointByFileUrl(runToCursorPosition.getFile().getUrl());
+        this.updateBreakpointByFileUrl(file.getUrl());
       }
 
       this.traceStack();
