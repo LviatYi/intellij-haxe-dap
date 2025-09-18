@@ -8,9 +8,11 @@ import com.intellij.plugins.haxe.HaxeBundle;
 import com.intellij.plugins.haxe.ide.quickfix.CreateGetterSetterQuickfix;
 import com.intellij.plugins.haxe.ide.quickfix.HaxeSwitchMutabilityModifier;
 import com.intellij.plugins.haxe.lang.psi.*;
+import com.intellij.plugins.haxe.lang.util.HaxeExpressionUtil;
 import com.intellij.plugins.haxe.model.*;
 import com.intellij.plugins.haxe.model.fixer.HaxeFixer;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashSet;
@@ -24,6 +26,36 @@ public class HaxeFieldAnnotator implements Annotator {
   public void annotate(@NotNull PsiElement element, @NotNull AnnotationHolder holder) {
     if (element instanceof HaxeFieldDeclaration field) {
       check(field, holder);
+    }
+    if (element instanceof HaxeReferenceExpression expression) {
+      checkFieldAccessFromGetterSetter(holder, expression);
+    }
+  }
+
+  private static void checkFieldAccessFromGetterSetter(@NotNull AnnotationHolder holder, HaxeReferenceExpression expression) {
+    if(expression.getParent() instanceof HaxeType) return;
+    // ignore chained expression as we only want to check self referencing
+    // and updating other instances should be allowed
+    // TODO: this also (incorrectly?) skips this check for `this.property`
+    if(expression.getChildren().length > 1) return;
+    HaxeMethodDeclaration method = PsiTreeUtil.getParentOfType(expression, HaxeMethodDeclaration.class);
+    if(method != null) {
+      PsiElement resolve = expression.resolve();
+      if(resolve instanceof HaxeFieldDeclaration fieldDeclaration) {
+        HaxeFieldModel fieldModel = (HaxeFieldModel)fieldDeclaration.getModel();
+        if(fieldModel.isRealVar()) return;
+        HaxeMethodModel methodModel = method.getModel();
+        boolean inGetterMethod = fieldModel.getGetterMethod() == methodModel;
+        boolean inSetterMethod = fieldModel.getSetterMethod() == methodModel;
+        boolean isWriteExpression = HaxeExpressionUtil.isInWriteOperation(expression);
+        boolean isReadExpression = HaxeExpressionUtil.isInReadOperation(expression);
+        if((inGetterMethod && isReadExpression) || (inSetterMethod && isWriteExpression)) {
+          holder.newAnnotation(HighlightSeverity.ERROR, "This field cannot be accessed because it is not a real variable")
+                  .range(expression)
+                  .withFix(addIsVarFix(fieldModel))
+                  .create();
+        }
+      }
     }
   }
 
@@ -163,13 +195,13 @@ public class HaxeFieldAnnotator implements Annotator {
     PsiElement fieldBasePsi = field.getBasePsi();
     if (PROPERTY_ACCESSOR_VALID.isEnabled(fieldBasePsi)) {
 // TODO: Bug here.  (set,get) are being marked as errors.
-      if (field.getGetterPsi() != null && !field.getGetterType().isValidGetter()) {
+      if (field.getGetterPsi() != null && !field.getGetterType().isValidGetAccessor()) {
         holder.newAnnotation(HighlightSeverity.ERROR, "Invalid getter accessor")
           .range(field.getGetterPsi())
           .create();
       }
 
-      if (field.getSetterPsi() != null && !field.getSetterType().isValidSetter()) {
+      if (field.getSetterPsi() != null && !field.getSetterType().isValidSetAccessor()) {
         holder.newAnnotation(HighlightSeverity.ERROR, "Invalid setter accessor")
           .range(field.getSetterPsi())
           .create();
@@ -243,30 +275,26 @@ public class HaxeFieldAnnotator implements Annotator {
 
     HaxeClassModel declaringClass = field.getDeclaringClass();
     if(declaringClass != null) {
-      if (declaringClass.isInterface() || declaringClass.isAnonymous()) return;
+      if (declaringClass.isInterface() || declaringClass.isAnonymous() || declaringClass.isExtern()) return;
     }
 
 
     HaxeCommonMembersModel membersModel = declaringClass != null ? declaringClass : field.getDeclaringModule();
 
-    if (field.getGetterType() == HaxeAccessorType.GET) {
-      final String methodName = "get_" + field.getName();
-
-      HaxeMethodModel method = membersModel.getMethod(methodName, null);
-      if (method == null && field.getGetterPsi() != null) {
-        holder.newAnnotation(HighlightSeverity.ERROR, "Can't find method " + methodName)
+    if (field.getGetterType().isGetter()) {
+      HaxeMethodModel getterMethod = field.getGetterMethod();
+      if (getterMethod == null && field.getGetterPsi() != null) {
+        holder.newAnnotation(HighlightSeverity.ERROR, "Can't find getter method")
           .range(field.getGetterPsi())
           .withFix(new CreateGetterSetterQuickfix(membersModel, field, true))
           .create();
       }
     }
 
-    if (field.getSetterType() == HaxeAccessorType.SET) {
-      final String methodName = "set_" + field.getName();
-
-      HaxeMethodModel method = membersModel.getMethod(methodName, null);
-      if (method == null && field.getSetterPsi() != null) {
-        holder.newAnnotation(HighlightSeverity.ERROR, "Can't find method " + methodName)
+    if (field.getSetterType().isSetter()) {
+      HaxeMethodModel setterMethod = field.getSetterMethod();
+      if (setterMethod == null && field.getSetterPsi() != null) {
+        holder.newAnnotation(HighlightSeverity.ERROR, "Can't find setter method")
           .range(field.getSetterPsi())
           .withFix(new CreateGetterSetterQuickfix(membersModel, field, false))
           .create();

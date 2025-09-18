@@ -66,7 +66,7 @@ public class HaxeExpressionEvaluatorHandlers {
                                                HaxeGenericResolver resolver) {
 
     if (element == null ) return null;
-    return evaluatorHandlersRecursionGuard.doPreventingRecursion(element, true, () -> handle(element, context, resolver));
+    return evaluatorHandlersRecursionGuard.doPreventingRecursion(element, false, () -> handle(element, context, resolver));
   }
 
 
@@ -92,6 +92,7 @@ public class HaxeExpressionEvaluatorHandlers {
       (expression instanceof HaxeLogicOrExpression) ||
       (expression instanceof HaxeCompareExpression) ||
       (expression instanceof HaxeCoalescingExpression) ||
+      (expression instanceof HaxeInExpression) ||
       (expression instanceof HaxeMultiplicativeExpression)
     ) {
       PsiElement[] children = expression.getChildren();
@@ -110,6 +111,8 @@ public class HaxeExpressionEvaluatorHandlers {
           // we might have constraints that help up here
           if (left != null && left.isTypeParameter()) left = tryResolveTypeParameter(left, resolver);
           if (right != null && right.isTypeParameter()) right = tryResolveTypeParameter(right, resolver);
+
+          if(left == null || right == null) return createUnknown(expression);
 
           return HaxeOperatorResolver.getBinaryOperatorResult(expression, left, right, operator, context).createHolder();
         }
@@ -197,11 +200,17 @@ public class HaxeExpressionEvaluatorHandlers {
        typeHolder  = SpecificTypeReference.getUnknown(element).createHolder();
     }else {
       PsiElement firstChild = children[0];
-      // make sure  expression  is not something like  `var myVar = myVar.add(x)`, we cant resolve type from this
-      if (firstChild != element) {
-        typeHolder = handle(firstChild, context, resolver);
+      //TODO mlo: might be able to give a better type based on what macro typedef is used, but for now we stick with
+      // expr to avoid assign errors
+      if(firstChild instanceof HaxeMacroIdentifier) {
+        typeHolder  = HaxeMacroTypeUtil.getExpr(element).createHolder();
       }else {
-        typeHolder  = SpecificTypeReference.getUnknown(element).createHolder();
+        // make sure  expression  is not something like  `var myVar = myVar.add(x)`, we cant resolve type from this
+        if (firstChild != element) {
+          typeHolder = handle(firstChild, context, resolver);
+        } else {
+          typeHolder = SpecificTypeReference.getUnknown(element).createHolder();
+        }
       }
     }
 
@@ -934,7 +943,12 @@ public class HaxeExpressionEvaluatorHandlers {
   }
 
   static ResultHolder createUnknown(PsiElement element) {
-    return SpecificHaxeClassReference.getUnknown(element).createHolder();
+    return createUnknown(element, true);
+  }
+  static ResultHolder createUnknown(PsiElement element, boolean cacheable) {
+      ResultHolder holder = getUnknown(element).createHolder();
+      holder.cacheable = cacheable;
+      return holder;
   }
 
   static ResultHolder handlePrefixExpression(
@@ -1316,7 +1330,13 @@ public class HaxeExpressionEvaluatorHandlers {
         HaxeClassModel model = parentOfType.getModel();
         // abstracts do not support the super keyword
         if(!model.isAbstractType()) {
-          return model.getInstanceReference().createHolder();
+          List<HaxeClassReferenceModel> extendingTypes = model.getExtendingTypes();
+          if(!extendingTypes.isEmpty()) {
+            HaxeClassModel haxeClassModel = extendingTypes.getFirst().getHaxeClassModel();
+            if(haxeClassModel != null) {
+              return haxeClassModel.getInstanceReference().createHolder();
+            }
+          }
         }
       }
       // called outside class ?
@@ -1369,8 +1389,14 @@ public class HaxeExpressionEvaluatorHandlers {
   static ResultHolder handlePrimitives(PsiElement element, HaxePsiToken psiToken) {
     IElementType type = psiToken.getTokenType();
 
-    if (type == HaxeTokenTypes.LITINT || type == HaxeTokenTypes.LITHEX || type == HaxeTokenTypes.LITOCT) {
+    if (type == HaxeTokenTypes.LITINT
+        || type == HaxeTokenTypes.LITHEX
+        || type == HaxeTokenTypes.LITOCT
+    ) {
       return SpecificHaxeClassReference.primitive("Int", element, Long.decode(element.getText())).createHolder();
+    } else if (type == HaxeTokenTypes.LITBIN) {
+      long value = Long.parseLong(element.getText().substring(2), 2);
+      return SpecificHaxeClassReference.primitive("Int", element, value).createHolder();
     } else if (type == HaxeTokenTypes.LITFLOAT) {
       Float value = Float.valueOf(element.getText());
       return SpecificHaxeClassReference.primitive("Float", element, Double.parseDouble(element.getText()))
@@ -1577,6 +1603,8 @@ public class HaxeExpressionEvaluatorHandlers {
     HaxeGenericResolver resolver,
     HaxeCallExpression callExpression) {
 
+      boolean allowCaching = true;
+
     HaxeExpression callExpressionRef = callExpression.getExpression();
     // generateResolverFromScopeParents -  making sure we got typeParameters from arguments/parameters
     HaxeGenericResolver localResolver = HaxeGenericResolverUtil.generateResolverFromScopeParents(callExpression);
@@ -1599,11 +1627,14 @@ public class HaxeExpressionEvaluatorHandlers {
         ResultHolder assignHint = resolver.getAssignHint();
         SpecificTypeReference assignHintType = assignHint == null ? null : assignHint.getType();
         HaxeCallExpressionContext callExpressionContext = HaxeCallExpressionUtil.createContextForMethodCall(callExpression, assignHintType, methodModel.getMethod());
+        if(!callExpressionContext.canCache) {
+            allowCaching = false;
+        }
         HaxeCallExpressionEvaluation evaluate = callExpressionContext.evaluate();
         if(evaluate.isValid()) {
           functionType = evaluate.getFunctionType(methodModel);
         }else {
-          functionType = createUnknown(callExpression).getType();
+          functionType = createUnknown(callExpression, false).getType();
         }
       }else {
         SpecificTypeReference callieRef = tryGetCallieType(callExpression);
@@ -1630,6 +1661,14 @@ public class HaxeExpressionEvaluatorHandlers {
         if(functionType instanceof SpecificHaxeClassReference  functionTypeRef) {
           if(functionTypeRef.isNullType() || functionTypeRef.isTypeDef()) {
             functionType = functionTypeRef.fullyResolveTypeDefAndUnwrapNullTypeReference();
+          }
+          if(functionType instanceof SpecificHaxeClassReference  classReference) {
+            HaxeClassModel haxeClassModel = classReference.getHaxeClassModel();
+            if (haxeClassModel instanceof HaxeAbstractClassModel abstractClassModel) {
+              if(abstractClassModel.isCallable()) {
+                functionType = abstractClassModel.getUnderlyingType(resolver);
+              }
+            }
           }
         }
       }
@@ -1762,25 +1801,26 @@ public class HaxeExpressionEvaluatorHandlers {
       }
 
       if(returnType.getFunctionType() != null){
-        return returnType.getFunctionType().createHolder();
+          ResultHolder holder = returnType.getFunctionType().createHolder();
+          holder.cacheable = allowCaching;
+          return holder;
       }
 
       if(returnType.isClassType() || returnType.isEnumValueType()) {
-        return returnType.withOrigin(ftype.context);
+          ResultHolder result = returnType.withOrigin(ftype.context);
+          result.cacheable = allowCaching;
+          return result;
       }
-
     }
 
     if (functionType!= null && functionType.isDynamic()) {
-      for (HaxeExpression expression : parameterExpressions) {
-        handle(expression, context, resolver);
-      }
-
-      return functionType.withoutConstantValue().createHolder();
+        ResultHolder holder = functionType.withoutConstantValue().createHolder();
+        holder.cacheable = allowCaching;
+        return holder;
     }
 
     // @TODO: resolve the function type return type
-    return createUnknown(callExpression);
+    return createUnknown(callExpression, false);
   }
 
   private static ResultHolder tryHandleFunctionBind(SpecificFunctionReference functionReference, HaxeCallExpression callExpression) {
@@ -2073,10 +2113,6 @@ public class HaxeExpressionEvaluatorHandlers {
   }
 
   static ResultHolder handleIdentifier(HaxeExpressionEvaluatorContext context, HaxeIdentifier identifier) {
-    //makes sure its a variable and not a reification expression
-    if (isMacroVariable(identifier)) {
-      return SpecificTypeReference.getDynamic(identifier).createHolder();
-    }
     // If it has already been seen, then use whatever type is already known.
     ResultHolder holder = context.get(identifier.getText());
     if (holder == null) {
@@ -2158,7 +2194,12 @@ public class HaxeExpressionEvaluatorHandlers {
       for (SpecificTypeReference typeReference : typeList) {
         if (typeReference.isVoid()) continue;
         if (bestGuess == null) {
-          bestGuess = typeReference;
+          ResultHolder assignHint = resolver.getAssignHint();
+          if(assignHint != null &&  assignHint.canAssign(typeReference.createHolder())) {
+            bestGuess = assignHint.getType();
+          }else {
+            bestGuess = typeReference;
+          }
           continue;
         }
         bestGuess = HaxeTypeUnifier.unify(bestGuess, typeReference, switchStatement);

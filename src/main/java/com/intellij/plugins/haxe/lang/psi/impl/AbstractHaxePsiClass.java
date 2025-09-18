@@ -65,6 +65,7 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
 
 
   private Boolean _isPrivate = null;
+  private Boolean _isExtern = null;
 
   static {
     log.info("Loaded AbstractHaxePsiClass");
@@ -168,10 +169,6 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     return HaxeResolveUtil.findComponentDeclaration(getContainingFile(), name) != null;
   }
 
-  @Override
-  public boolean isExtern() {
-    return (this instanceof HaxeExternClassDeclaration || this instanceof HaxeExternInterfaceDeclaration);
-  }
 
   @Override
   public boolean isAbstractType() {
@@ -272,16 +269,17 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
 
 
   @Override
-  public HaxeNamedComponent findHaxeMethodByName(@NotNull final String name, @Nullable HaxeGenericResolver resolver) {
+  public List<HaxeNamedComponent> findHaxeMethodByName(@NotNull final String name, @Nullable HaxeGenericResolver resolver) {
     List<HaxeMethod> all = getHaxeMethodsAll(HaxeComponentType.INTERFACE);
-    return ContainerUtil.find(all, (Condition<HaxeNamedComponent>)component -> name.equals(component.getName()));
+    return ContainerUtil.findAll(all, component -> name.equals(component.getName()));
   }
+
 
   /** Optimized path to replace findHaxeMethod and findHaxeField when used together. */
   @Override
-  public HaxeNamedComponent findHaxeMemberByName(@NotNull final String name, @Nullable HaxeGenericResolver resolver) {
+  public List<HaxeNamedComponent> findHaxeMemberByName(@NotNull final String name, @Nullable HaxeGenericResolver resolver) {
     List<HaxeNamedComponent> namedSubComponents = HaxeNamedSubComponentUtil.getAllNamedSubComponentsInType(this, resolver);
-    return ContainerUtil.find(namedSubComponents, component -> {
+    return ContainerUtil.findAll(namedSubComponents, component -> {
       HaxeComponentType type = component.getComponentType();
       return ((type == HaxeComponentType.FIELD || type == HaxeComponentType.METHOD) && name.equals(component.getName()));
     });
@@ -302,7 +300,8 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     });
     // Maybe old style getter?
     if (null == accessor) {
-      accessor = findHaxeMethodByName("__get", resolver);
+      List<HaxeNamedComponent> methods = findHaxeMethodByName("__get", resolver);
+      accessor = methods.isEmpty() ? null : methods.getFirst();
     }
     // maybe ArrayAccess interface for externs (see hackish workaround where findArrayAccessGetter is used)
     if (null == accessor) {
@@ -331,7 +330,8 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     });
     // Maybe old style getter?
     if (null == accessor) {
-      accessor = findHaxeMethodByName("__set", resolver);
+      List<HaxeNamedComponent> methods = findHaxeMethodByName("__set", resolver);
+      accessor = methods.isEmpty() ? null : methods.getFirst();
     }
     // maybe ArrayAccess interface for externs (see hackish workaround where findArrayAccessGetter is used)
     if (null == accessor) {
@@ -684,6 +684,26 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
       _isPrivate =  (privateKeyWord != null);
     }
     return _isPrivate;
+  }
+  @Override
+  public boolean isExtern() {
+    if(_isExtern == null) {
+      HaxeExternKeyWord privateKeyWord = null;
+      if (this instanceof HaxeExternClassDeclaration) { // concrete class
+        _isExtern = true;
+        return _isExtern;
+      } else if (this instanceof HaxeExternInterfaceDeclaration declaration) { // concrete class
+        privateKeyWord = declaration.getExternKeyWord();
+      } else if (this instanceof HaxeAbstractTypeDeclaration declaration) { // abstract
+        privateKeyWord = declaration.getExternKeyWord();
+      } else if (this instanceof HaxeTypedefDeclaration declaration) { // typedef
+        privateKeyWord = declaration.getExternKeyWord();
+      } else if (this instanceof HaxeEnumDeclaration declaration) { // enum
+        privateKeyWord = declaration.getExternKeyWord();
+      }
+      _isExtern =  (privateKeyWord != null);
+    }
+    return _isExtern;
   }
 
   private HaxePrivateKeyWord getPrivateKeyWord(HaxeClassModifierList list) {

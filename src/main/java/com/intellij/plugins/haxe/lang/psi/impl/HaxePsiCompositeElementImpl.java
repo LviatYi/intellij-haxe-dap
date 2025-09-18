@@ -144,6 +144,8 @@ public class HaxePsiCompositeElementImpl extends ASTWrapperPsiElement implements
     addEnumMembers(enumDeclarations, result);
     addDeclarations(result, enumDeclarations);
 
+    addFunctionLiteralsWithName(result, UsefulPsiTreeUtil.getChildrenOfType(this, HaxeFunctionLiteral.class, stopper));
+
     if(this instanceof HaxeSwitchCase switchCase) {
       List<HaxeSwitchCaseExpr> list = switchCase.getSwitchCaseExprList();
       for (HaxeSwitchCaseExpr expr : list) {
@@ -226,6 +228,16 @@ public class HaxePsiCompositeElementImpl extends ASTWrapperPsiElement implements
     return result;
   }
 
+  private void addFunctionLiteralsWithName(Set<PsiElement> result, @Nullable HaxeFunctionLiteral[] childrenOfType) {
+    if(childrenOfType == null) return;
+    for (HaxeFunctionLiteral haxeFunctionLiteral : childrenOfType) {
+      HaxeComponentName componentName = haxeFunctionLiteral.getComponentName();
+      if(componentName != null) {
+        result.add(componentName);
+      }
+    }
+  }
+
   private static void addEnumMembers(HaxeEnumDeclaration[] enumDeclarations, Set<PsiElement> result) {
     if(enumDeclarations != null) {
       for (HaxeEnumDeclaration haxeEnumDeclaration : enumDeclarations) {
@@ -240,11 +252,13 @@ public class HaxePsiCompositeElementImpl extends ASTWrapperPsiElement implements
   }
 
   private static void addCaptureVariableDeclarations(HaxeSwitchCaseExpr expr, Set<PsiElement> result) {
-    List<PsiElement> captureVars = PsiTreeUtil.findChildrenOfType(expr, HaxeReferenceExpression.class).stream()
-            .filter(HaxeReferenceUtil::isCaptureVar)
-            .map(PsiElement.class::cast)
-            .toList();
-    addDeclarations(result, captureVars);
+      List<PsiElement> captureVars = new ArrayList<>();
+      for (HaxeReferenceExpression referenceExpression : PsiTreeUtil.findChildrenOfType(expr, HaxeReferenceExpression.class)) {
+          if (HaxeReferenceUtil.isCaptureVar(referenceExpression)) {
+              captureVars.add(referenceExpression);
+          }
+      }
+      addDeclarations(result, captureVars);
   }
 
 

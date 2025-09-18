@@ -19,6 +19,7 @@
  */
 package com.intellij.plugins.haxe.model.type;
 
+import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxeDummyASTNode;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxePsiCompositeElementImpl;
@@ -394,6 +395,14 @@ public abstract class SpecificTypeReference {
     }
     return false;
   }
+  public boolean isObjectLiteral() {
+    if (this instanceof SpecificHaxeAnonymousReference) return true;
+    if (this instanceof SpecificHaxeClassReference specificHaxeClassReference) {
+      HaxeClass aClass = specificHaxeClassReference.getHaxeClassReference().getHaxeClass();
+      if (aClass instanceof HaxeObjectLiteral) return true;
+    }
+    return false;
+  }
 
   final public boolean isEnumValue() {
     return (this instanceof SpecificEnumValueReference)
@@ -535,6 +544,7 @@ public abstract class SpecificTypeReference {
 
   @NotNull
   private static HaxeClassReference getUnknownClassReference(@NotNull PsiElement context) {
+    ProgressIndicatorProvider.checkCanceled();
     PsiUtilCore.ensureValid(context);
     return new HaxeClassReference( UNKNOWN, HaxeClass.createUnknownClass(context.getNode()).getModel(), context);
   }

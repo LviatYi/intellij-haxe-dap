@@ -791,8 +791,8 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
           }
           //failsafe check that we can get function model from SDK
           if (SpecificTypeReference.getFunction(resolve).getHaxeClass() != null) {
-            final HaxeClass fn = new HaxeSpecificFunction((HaxeMethod)resolve, specialization);
-            return HaxeResolveResult.create(fn, specialization);
+            final HaxeClass fn = HaxeSpecificFunction.tryCreate((HaxeMethod)resolve, specialization);
+            if(fn != null) return HaxeResolveResult.create(fn, specialization);
           }
         }
       }
@@ -1404,7 +1404,11 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
     else if (type == HaxeTokenTypes.REG_EXP) {
       return "EReg";
     }
-    else if (type == HaxeTokenTypes.LITHEX || type == HaxeTokenTypes.LITINT || type == HaxeTokenTypes.LITOCT) {
+    else if (type == HaxeTokenTypes.LITINT
+             || type == HaxeTokenTypes.LITHEX
+             || type == HaxeTokenTypes.LITOCT
+             || type == HaxeTokenTypes.LITBIN
+    ) {
       return "Int";
     }
     return null;
@@ -1428,7 +1432,7 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
     if (ourClass == null) return;
 
     HaxeFileModel.fromElement(reference).getUsingModels().stream()
-      .flatMap(model -> model.getExtensionMethods(ourClass).stream())
+      .flatMap(model -> model.getExtensionMethods(ourClass, reference).stream())
       .map(HaxeMemberModel::getNamePsi)
       .forEach(name -> {
         variants.add(name);

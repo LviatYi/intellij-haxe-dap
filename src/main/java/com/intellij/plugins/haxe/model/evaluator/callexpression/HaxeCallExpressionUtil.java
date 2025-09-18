@@ -115,6 +115,8 @@ public class HaxeCallExpressionUtil {
 
     HaxeGenericResolver methodTranslatedResolver = translateResolverToMethodDeclaringClass(genericResolver, callieClass, method);
 
+    boolean canCache = argumentList.stream().allMatch(CallExpressionArgumentModel::isCanCache) && returnType.cacheable;
+
     HaxeCallExpressionContext evaluation = new HaxeCallExpressionContext(argumentList, parameterList, returnType, parentResolver, methodTranslatedResolver);
     evaluation.assignHint = tryCastAssignHintToReturnType(assignHint, returnType); // casting to returnType to make sure typeParams matches.
     evaluation.isStaticExtension = isStaticExtension;
@@ -124,7 +126,7 @@ public class HaxeCallExpressionUtil {
     evaluation.isEnumValueMatchCallExpression = isEnumValueMatchCallExpression(callExpression);
     evaluation.isEnumConstructor = isEnumConstructor(callExpression);
     evaluation.callie = callieType;
-
+    evaluation.canCache = canCache;
 
 
     return evaluation;
@@ -209,23 +211,53 @@ public class HaxeCallExpressionUtil {
     return false;
   }
 
+  // NOTE: Abstract types can have overloads for constructors as long as they are inlined
+  // to ensure we got the right overload we do a resolve on new expression (resolves to constructor)
+  private static HaxeMethodModel getConstructorModelForNewExpression(@NotNull HaxeNewExpression newExpression) {
+    PsiElement constructor = newExpression.resolve();
+    if(constructor instanceof  HaxeConstructorDeclaration declaration) {
+      return declaration.getModel();
+    }
+    return null;
+  }
+
   @Nullable
   public static HaxeCallExpressionContext createContextForConstructorCall(@NotNull HaxeNewExpression newExpression) {
-    return createContextForConstructorCall(newExpression, null);
+    HaxeMethodModel methodModel = getConstructorModelForNewExpression(newExpression);
+    return createContextForConstructorCall(newExpression, methodModel, null);
+  }
+
+  public static HaxeCallExpressionContext createContextForConstructorCall(@NotNull HaxeNewExpression newExpression, HaxeMethodModel methodModel) {
+    return createContextForConstructorCall(newExpression, methodModel, null);
   }
   public static HaxeCallExpressionContext createContextForConstructorCall(@NotNull HaxeNewExpression newExpression, @Nullable ResultHolder assignHint) {
+    HaxeMethodModel methodModel = getConstructorModelForNewExpression(newExpression);
+    return createContextForConstructorCall(newExpression, methodModel, assignHint);
+  }
+  public static HaxeCallExpressionContext createContextForConstructorCall(@NotNull HaxeNewExpression newExpression, HaxeMethodModel methodModel, @Nullable ResultHolder assignHint) {
 
     HaxeGenericResolver genericResolver = HaxeGenericResolverUtil.generateResolverFromScopeParents(newExpression);
     List<CallExpressionArgumentModel> argumentList = getArgumentList(newExpression);
     ResultHolder type = HaxeTypeResolver.getTypeFromType(newExpression.getType());
     SpecificHaxeClassReference classType = type.getClassType();
+    boolean canCache = type.cacheable && argumentList.stream().allMatch(CallExpressionArgumentModel::isCanCache);
     if (classType != null) {
       SpecificTypeReference typeRef = classType.fullyResolveTypeDefAndUnwrapNullTypeReference();
       if (typeRef instanceof SpecificHaxeClassReference classReference ) {
         HaxeGenericResolver referenceGenericResolver = classReference.getGenericResolver();
         HaxeClassModel classModel = classReference.getHaxeClassModel();
         if (classModel != null) {
-          HaxeMethodModel constructorModel = classModel.getConstructor(genericResolver);
+          HaxeMethodModel constructorModel = null;
+          // abstract types can have inline overloads
+          PsiElement resolve = newExpression.getType().getReferenceExpression().resolve();
+          if(resolve instanceof HaxeConstructor constructor) {
+
+          }
+          if (methodModel != null) {
+            constructorModel = methodModel;
+          }else {
+            constructorModel = classModel.getConstructor(genericResolver);
+          }
           if (constructorModel != null) {
             List<CallExpressionParameterModel> parameterList = getParameterList(constructorModel);
 
@@ -244,6 +276,7 @@ public class HaxeCallExpressionUtil {
             evaluation.isMacroFunction = false;
             evaluation.isEnumConstructor = false; // enums dont use the new keyword
             evaluation.isConstructor = true;
+            evaluation.canCache = canCache;
             return evaluation;
           }
         }
@@ -251,8 +284,6 @@ public class HaxeCallExpressionUtil {
     }
     return null;
   }
-
-
 
 
   private static List<CallExpressionParameterModel> getParameterList(@NotNull SpecificFunctionReference function) {
@@ -276,7 +307,7 @@ public class HaxeCallExpressionUtil {
       List<HaxeExpression> expressions = expressionListPsi.getExpressionList();
       for (HaxeExpression expression : expressions) {
         ResultHolder result = HaxeExpressionEvaluator.evaluateWithRecursionGuard(expression).result;
-        CallExpressionArgumentModel model = CallExpressionArgumentModel.create(expression, result.getType());
+        CallExpressionArgumentModel model = CallExpressionArgumentModel.create(expression, result.getType(), !result.isUnknown() && result.cacheable);
         argumentList.add(model);
       }
     }
@@ -286,9 +317,10 @@ public class HaxeCallExpressionUtil {
     List<CallExpressionArgumentModel> argumentList = new ArrayList<>();
       List<HaxeExpression> expressions = newExpression.getExpressionList();
       for (HaxeExpression expression : expressions) {
-        ResultHolder result = HaxeExpressionEvaluator.evaluateWithRecursionGuard(expression).result;
-        CallExpressionArgumentModel model = CallExpressionArgumentModel.create(expression, result.getType());
-        argumentList.add(model);
+          ResultHolder result = HaxeExpressionEvaluator.evaluateWithRecursionGuard(expression).result;
+          CallExpressionArgumentModel model = CallExpressionArgumentModel.create(expression, result.getType(), result.cacheable);
+          model.canCache = result.cacheable;
+          argumentList.add(model);
       }
     return argumentList;
   }
@@ -296,7 +328,7 @@ public class HaxeCallExpressionUtil {
   private static @NotNull List<CallExpressionArgumentModel> getArgumentList(@NotNull List<SpecificTypeReference> types) {
     List<CallExpressionArgumentModel> argumentList = new ArrayList<>();
     for (SpecificTypeReference type : types) {
-      CallExpressionArgumentModel model = CallExpressionArgumentModel.create(type.getElementContext(), type);
+      CallExpressionArgumentModel model = CallExpressionArgumentModel.create(type.getElementContext(), type, false);
       argumentList.add(model);
     }
     return argumentList;

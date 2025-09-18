@@ -18,6 +18,9 @@
 package com.intellij.plugins.haxe.lang.psi;
 
 import com.intellij.plugins.haxe.HaxeComponentType;
+import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypes;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.tree.IElementType;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -36,9 +39,13 @@ public interface HaxeNamedComponent extends HaxePsiCompositeElement {
 
   boolean isOverride();
 
+  boolean isOverload();
+
   boolean isInline();
 
   String filterName();
+
+  PsiElement getModiferPsi(IElementType tokenType);
 
   // Added the slowdowns from HaxeComponentType.typeOf()
   // se method description for explanation description

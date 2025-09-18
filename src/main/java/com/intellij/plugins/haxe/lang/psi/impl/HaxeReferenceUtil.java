@@ -11,16 +11,22 @@ import com.intellij.plugins.haxe.model.type.SpecificHaxeClassReference;
 import com.intellij.plugins.haxe.util.HaxeResolveUtil;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiReference;
+import com.intellij.psi.ResolveState;
 import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import static com.intellij.plugins.haxe.model.type.SpecificTypeReference.CLASS;
 import static com.intellij.plugins.haxe.model.type.SpecificTypeReference.ENUM;
 
 public class HaxeReferenceUtil {
+
+    private final static Pattern qNamePattern = Pattern.compile("([^<>:()\\[\\]])+(\\.[^<>:()\\[\\]]+)+");
 
     public static boolean isStaticExtension(HaxeReferenceExpression referenceExpression) {
                 PsiElement method = referenceExpression.resolve();
@@ -91,6 +97,8 @@ public class HaxeReferenceUtil {
                         boolean inUsingImports = HaxeResolveUtil.isInUsingImports(referenceExpression, haxeMethod);
                         if(inUsingImports) return true;
 
+                        if(callerType.isUnknown()) return false;
+
                         return !(caller instanceof HaxeClass || caller instanceof HaxeImportAlias);
                     }else {
                         return true;
@@ -108,15 +116,27 @@ public class HaxeReferenceUtil {
     }
 
     public static boolean isCaptureVar(HaxeReferenceExpression expression) {
-        PsiElement resolved = expression.resolve();
-        if(resolved != null) {
-            HaxeSwitchStatement switchStatement = PsiTreeUtil.getParentOfType(expression, HaxeSwitchStatement.class);
-            if (switchStatement != null) {
-                HaxeExpression switchStatementExpression = switchStatement.getExpression();
-                return resolved == switchStatementExpression || PsiTreeUtil.isAncestor(switchStatementExpression, resolved, true);
+        // NOTE! do not try use to use resolve() here, it will be extremely slow
+
+        // ignore any function call
+        if(expression.getParent() instanceof HaxeCallExpression) return false;
+
+        // search outside switch for references
+        HaxeSwitchStatement switchStatement = PsiTreeUtil.getParentOfType(expression, HaxeSwitchStatement.class);
+        if(switchStatement == null) return false;
+
+
+        Set<HaxeComponentName> results = new HashSet<>();
+        PsiTreeUtil.treeWalkUp(new ComponentNameScopeProcessor(results), switchStatement, null, new ResolveState());
+
+        boolean matchFound = false;
+        for (HaxeComponentName haxeComponentName : results) {
+            if (haxeComponentName.getIdentifier().textMatches(expression)) {
+                return false;
             }
         }
-        return false;
+        // if no other reference found then this is a capture var
+        return true;
     }
 
 
@@ -138,4 +158,30 @@ public class HaxeReferenceUtil {
         }
         return false;
     }
+
+    public static boolean canBeQname(@NotNull HaxeReference reference) {
+            PsiElement firstChild = reference.getFirstChild();
+            // before attempting a Qname lookup, make sure reference does not contain callExpression, parenthesizedExpression
+            // or other stuff that is not part of a Qname (it should only contain  reference, identifier or token)
+            while (firstChild instanceof HaxeReference
+                   || firstChild instanceof HaxeIdentifier
+                   || firstChild instanceof HaxePsiToken
+            ) {
+                if (firstChild instanceof HaxeCallExpression) break;
+                if (firstChild instanceof HaxeParenthesizedExpressionReference) break;
+                if (firstChild instanceof HaxeNewExpression) break;
+
+                firstChild = firstChild.getFirstChild();
+
+                if (firstChild == null) {
+                    return true;
+                }
+            }
+        return false;
+    }
+
+    public static boolean textCanBeQname(@NotNull String text) {
+        return qNamePattern.matcher(text).matches();
+    }
+
 }

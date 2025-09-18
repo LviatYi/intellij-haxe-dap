@@ -15,7 +15,7 @@ Haxe File
               HaxePsiToken:ID('a1')
           VAR_INIT
             HaxePsiToken:=('=')
-            LITERAL_EXPRESSION
+            CONSTANT_EXPRESSION
               HaxePsiToken:LITINT('0')
           HaxePsiToken:;(';')
         FIELD_DECLARATION
@@ -29,7 +29,7 @@ Haxe File
             PREFIX_EXPRESSION
               PREFIX_OPERATOR
                 HaxePsiToken:-('-')
-              LITERAL_EXPRESSION
+              CONSTANT_EXPRESSION
                 HaxePsiToken:LITINT('134')
           HaxePsiToken:;(';')
         FIELD_DECLARATION
@@ -40,7 +40,7 @@ Haxe File
               HaxePsiToken:ID('a3')
           VAR_INIT
             HaxePsiToken:=('=')
-            LITERAL_EXPRESSION
+            CONSTANT_EXPRESSION
               HaxePsiToken:LITHEX('0xFF00')
           HaxePsiToken:;(';')
         FIELD_DECLARATION
@@ -51,9 +51,10 @@ Haxe File
               HaxePsiToken:ID('a4')
           VAR_INIT
             HaxePsiToken:=('=')
-            LITERAL_EXPRESSION
-              HaxePsiToken:LITFLOAT('123.0')
+            CONSTANT_EXPRESSION
+              HaxePsiToken:LITBIN('0b1010')
           HaxePsiToken:;(';')
+        PsiComment(MSL_COMMENT)('// Haxe 5 feature?')
         FIELD_DECLARATION
           MUTABILITY_MODIFIER
             HaxePsiToken:var('var')
@@ -62,8 +63,8 @@ Haxe File
               HaxePsiToken:ID('a5')
           VAR_INIT
             HaxePsiToken:=('=')
-            LITERAL_EXPRESSION
-              HaxePsiToken:null('null')
+            CONSTANT_EXPRESSION
+              HaxePsiToken:LITFLOAT('123.0')
           HaxePsiToken:;(';')
         FIELD_DECLARATION
           MUTABILITY_MODIFIER
@@ -73,8 +74,8 @@ Haxe File
               HaxePsiToken:ID('a6')
           VAR_INIT
             HaxePsiToken:=('=')
-            LITERAL_EXPRESSION
-              HaxePsiToken:LITFLOAT('13e50')
+            CONSTANT_EXPRESSION
+              HaxePsiToken:null('null')
           HaxePsiToken:;(';')
         FIELD_DECLARATION
           MUTABILITY_MODIFIER
@@ -84,11 +85,8 @@ Haxe File
               HaxePsiToken:ID('a7')
           VAR_INIT
             HaxePsiToken:=('=')
-            PREFIX_EXPRESSION
-              PREFIX_OPERATOR
-                HaxePsiToken:-('-')
-              LITERAL_EXPRESSION
-                HaxePsiToken:LITFLOAT('1e-99')
+            CONSTANT_EXPRESSION
+              HaxePsiToken:LITFLOAT('13e50')
           HaxePsiToken:;(';')
         FIELD_DECLARATION
           MUTABILITY_MODIFIER
@@ -96,6 +94,20 @@ Haxe File
           COMPONENT_NAME
             IDENTIFIER
               HaxePsiToken:ID('a8')
+          VAR_INIT
+            HaxePsiToken:=('=')
+            PREFIX_EXPRESSION
+              PREFIX_OPERATOR
+                HaxePsiToken:-('-')
+              CONSTANT_EXPRESSION
+                HaxePsiToken:LITFLOAT('1e-99')
+          HaxePsiToken:;(';')
+        FIELD_DECLARATION
+          MUTABILITY_MODIFIER
+            HaxePsiToken:var('var')
+          COMPONENT_NAME
+            IDENTIFIER
+              HaxePsiToken:ID('a9')
           VAR_INIT
             HaxePsiToken:=('=')
             STRING_LITERAL_EXPRESSION
@@ -108,7 +120,7 @@ Haxe File
             HaxePsiToken:var('var')
           COMPONENT_NAME
             IDENTIFIER
-              HaxePsiToken:ID('a9')
+              HaxePsiToken:ID('a10')
           VAR_INIT
             HaxePsiToken:=('=')
             STRING_LITERAL_EXPRESSION
@@ -125,7 +137,7 @@ Haxe File
             HaxePsiToken:var('var')
           COMPONENT_NAME
             IDENTIFIER
-              HaxePsiToken:ID('a10')
+              HaxePsiToken:ID('a11')
           VAR_INIT
             HaxePsiToken:=('=')
             STRING_LITERAL_EXPRESSION
@@ -138,10 +150,10 @@ Haxe File
             HaxePsiToken:var('var')
           COMPONENT_NAME
             IDENTIFIER
-              HaxePsiToken:ID('a11')
+              HaxePsiToken:ID('a12')
           VAR_INIT
             HaxePsiToken:=('=')
-            LITERAL_EXPRESSION
+            CONSTANT_EXPRESSION
               HaxePsiToken:true('true')
           HaxePsiToken:;(';')
         FIELD_DECLARATION
@@ -149,10 +161,10 @@ Haxe File
             HaxePsiToken:var('var')
           COMPONENT_NAME
             IDENTIFIER
-              HaxePsiToken:ID('a12')
+              HaxePsiToken:ID('a13')
           VAR_INIT
             HaxePsiToken:=('=')
-            LITERAL_EXPRESSION
+            CONSTANT_EXPRESSION
               HaxePsiToken:false('false')
           HaxePsiToken:;(';')
         HaxePsiToken:}('}')

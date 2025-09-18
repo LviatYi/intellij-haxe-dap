@@ -16,13 +16,17 @@ import com.intellij.plugins.haxe.model.evaluator.assign.AssignExplanation;
 import com.intellij.plugins.haxe.model.evaluator.assign.HaxeAssignEvaluation;
 import com.intellij.plugins.haxe.model.fixer.HaxeFixer;
 import com.intellij.plugins.haxe.model.type.*;
+import com.intellij.psi.PsiComment;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.Collection;
+import java.util.List;
 
+import static com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypeSets.CONDITIONAL_ERROR;
+import static com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypeSets.MSL_COMMENT;
 import static com.intellij.plugins.haxe.metadata.psi.HaxeMeta.NOT_NULL;
 import static com.intellij.plugins.haxe.util.UsefulPsiTreeUtil.getTypeTagForMethodOrFunction;
 
@@ -48,17 +52,18 @@ public class HaxeReturnStatementAnnotator implements Annotator {
         ResultHolder typeTagType = HaxeTypeResolver.getTypeFromTypeTag(typeTag, method);
         if(typeTagType.isVoid()) return;
 
-        //TODO traverse tree and find branches without return statement
-        Collection<HaxeReturnStatement> returnStatements = PsiTreeUtil.findChildrenOfType(method.getBody(), HaxeReturnStatement.class);
-        Collection<HaxeThrowStatement> throwStatements = PsiTreeUtil.findChildrenOfType(method.getBody(), HaxeThrowStatement.class);
+        @NotNull PsiElement[] children = method.getBody().getChildren();
+        boolean hasAllPathsCovered = hasReturnPathsCovered(children);
 
-        if(returnStatements.isEmpty() && throwStatements.isEmpty()) {
+        if(!hasAllPathsCovered) {
             holder.newAnnotation(HighlightSeverity.ERROR, "Missing return statement")
                     .range(method.getBody().getLastChild())
                     .create();
         }
 
     }
+
+
 
     private void checkReturnStatement(HaxeReturnStatement returnStatement, @NotNull AnnotationHolder holder) {
         HaxePsiCompositeElement compositeElement = PsiTreeUtil.getParentOfType(returnStatement, HaxeMethod.class, HaxeFunctionLiteral.class);
@@ -67,7 +72,10 @@ public class HaxeReturnStatementAnnotator implements Annotator {
 
 
         ResultHolder expectedType = HaxeTypeResolver.getTypeFromTypeTag(typeTag, compositeElement);
-        ResultHolder returnedType = HaxeExpressionEvaluator.evaluate(returnStatement).result;
+        HaxeGenericResolver resolver = HaxeGenericResolverUtil.generateResolverFromScopeParents(returnStatement);
+        resolver.setAssignHint(expectedType);
+
+        ResultHolder returnedType = HaxeExpressionEvaluator.evaluate(returnStatement, resolver).result;
 
         boolean hasReturnValue = returnStatement.getChildren().length != 0;
         PsiElement highlightElement = hasReturnValue ? returnStatement.getChildren()[0] : returnStatement;
@@ -111,16 +119,27 @@ public class HaxeReturnStatementAnnotator implements Annotator {
                     if (classType != null) {
                         HaxeClassModel model = classType.getHaxeClassModel();
                         if (model != null) {
-                            if (model.hasCompileTimeMeta(NOT_NULL)) {
-                                String message = HaxeBundle.message("haxe.semantic.incompatible.type.null.warning",
-                                        expectedType.toPresentationString());
 
-                                String nullWrapped = "Null<" + expectedType.toTypeString() + ">";
-                                holder.newAnnotation(HighlightSeverity.WEAK_WARNING, message)
-                                        .range(highlightElement)
-                                        .withFix(ReplaceReturnTypeFix(nullWrapped, typeTag))
-                                        .create();
+                            String message;
+                            String typeName = expectedType.toTypeString();
+                            if(expectedType.isTypeParameterWithConstraints()) {
+                                HaxeClassModel haxeClassModel = expectedType.getClassType().getHaxeClassModel();
+                                if(haxeClassModel != null) {
+                                    typeName = haxeClassModel.getName();
+                                }
                             }
+
+                            if (model.isAbstractType() && model.hasCompileTimeMeta(NOT_NULL)) {
+                                message = HaxeBundle.message("haxe.semantic.incompatible.type.null.warning",
+                                        expectedType.toPresentationString());
+                            }else {
+                                message = HaxeBundle.message("haxe.semantic.incompatible.type.null.wrap", typeName);
+                            }
+                            String nullWrapped = "Null<" + typeName + ">";
+                            holder.newAnnotation(HighlightSeverity.WEAK_WARNING, message)
+                                    .range(highlightElement)
+                                    .withFix(ReplaceReturnTypeFix(nullWrapped, typeTag))
+                                    .create();
                         }
                     }
                 }
@@ -146,4 +165,109 @@ public class HaxeReturnStatementAnnotator implements Annotator {
             }
         };
     }
+
+
+    private static boolean hasReturnPathsCovered(@NotNull PsiElement[] children) {
+        boolean hasReturnPaths = false;
+        for (PsiElement child : children) {
+            // TODO mlo: would this work if we only check last statement ?
+            // would have to make sure last element is not comment,conditional compilation or something like that
+
+            if(child instanceof HaxeCatchStatement) continue;  // handled by try statement logic
+            if(child instanceof PsiComment comment) {
+                if(comment.getTokenType() == CONDITIONAL_ERROR) {
+                    hasReturnPaths = true;
+                }
+            } else {
+                hasReturnPaths = hasReturnPathsCovered(child);
+            }
+        }
+        return hasReturnPaths;
+    }
+
+    private static boolean hasReturnPathsCovered(@Nullable PsiElement child) {
+        // blocks to check
+        // if else, switch-case, try-catch, for-loop, while-loop, block/scope
+
+        if(child == null) return true;
+
+        if(child instanceof HaxeIfStatement ifStatement) {
+            HaxeGuardedStatement guardedStatement = ifStatement.getGuardedStatement();
+            HaxeElseStatement elseStatement = ifStatement.getElseStatement();
+
+            if (guardedStatement == null || !hasReturnPathsCovered(guardedStatement.getChildren())) {
+                return false;
+            }
+            if (elseStatement == null || !hasReturnPathsCovered(elseStatement.getChildren())) {
+                return false;
+            }
+
+            return true;
+        }
+        if(child instanceof HaxeSwitchStatement switchStatement) {
+            boolean isEnumSwitch = isSwitchOnEnum(switchStatement);
+            boolean hasDefault = false;
+            HaxeSwitchBlock switchBlock = switchStatement.getSwitchBlock();
+            if(switchBlock!= null) {
+                boolean allCasesHaveReturn = true;
+                List<HaxeSwitchCase> switchCaseList = switchBlock.getSwitchCaseList();
+                for (HaxeSwitchCase haxeSwitchCase : switchCaseList) {
+                    if(haxeSwitchCase instanceof HaxeDefaultCase) {
+                        hasDefault = true;
+                    }
+                    HaxeSwitchCaseBlock switchCaseBlock = haxeSwitchCase.getSwitchCaseBlock();
+                    if(switchCaseBlock != null) {
+                        allCasesHaveReturn = allCasesHaveReturn && hasReturnPathsCovered(switchCaseBlock.getChildren());
+                    }
+                }
+                // if not enum  then a default block is necessary to cover all cases
+                if(!isEnumSwitch && !hasDefault) {
+                    return false;
+                }
+                return allCasesHaveReturn;
+            }
+            return false;
+        }
+        if(child instanceof HaxeTryStatement tryStatement) {
+            boolean returnPathsCovered = hasReturnPathsCovered(tryStatement.getChildren());
+            List<HaxeCatchStatement> catchStatements = tryStatement.getCatchStatementList();
+            for (HaxeCatchStatement catchStatement : catchStatements) {
+                returnPathsCovered = returnPathsCovered && hasReturnPathsCovered(catchStatement.getChildren());
+            }
+            return returnPathsCovered;
+        }
+
+        if (child instanceof HaxeDoWhileStatement doWhileStatement) {
+            HaxeDoWhileBody body = doWhileStatement.getBody();
+            if(body != null) {
+                return hasReturnPathsCovered(body.getChildren());
+            }
+            return false;
+        }
+        if(child instanceof HaxeBlockStatement blockStatement) {
+            return hasReturnPathsCovered(blockStatement.getChildren());
+        }
+
+        if(child instanceof HaxeReturnStatement) {
+            return true;
+        }
+        if(child instanceof HaxeThrowStatement) {
+            return true;
+        }
+        // ignore comments
+        if(child instanceof PsiComment) return true;
+
+        return false;
+    }
+
+    private static boolean isSwitchOnEnum(HaxeSwitchStatement switchStatement) {
+        ResultHolder switchType = HaxeExpressionEvaluator.evaluate(switchStatement.getExpression()).result;
+        if(switchType.getClassType() != null) {
+            SpecificTypeReference specificTypeReference = switchType.getClassType().fullyResolveTypeDefAndUnwrapNullTypeReference();
+            switchType = specificTypeReference.createHolder();
+        }
+        return switchType.isEnum();
+    }
+
+
 }

@@ -193,9 +193,11 @@ END_OF_LINE_COMMENT="/""/"[^\r\n]*
 mHEX_DIGIT = [0-9A-Fa-f]
 mINT_DIGIT = [0-9]
 mOCT_DIGIT = [0-7]
+mBIN_DIGIT = [0-1]
 
 mNUM_INT = "0" | ([1-9] {mINT_DIGIT}*)
 mNUM_HEX = ("0x" | "0X") {mHEX_DIGIT}+
+mNUM_BIN = ("0b" | "0B") {mBIN_DIGIT}+
 mNUM_OCT = "0" {mOCT_DIGIT}+
 
 mREG_EXP = "~/" ([^"/"] | {ESCAPE_SEQUENCE})* "/" [igmsu]*
@@ -264,7 +266,7 @@ CONDITIONAL_ERROR="#error"[^\r\n]*
 {WHITE_SPACE_CHAR}+                       { return emitToken( com.intellij.psi.TokenType.WHITE_SPACE);}
 
 {CONDITIONAL_LINE}                        { return emitToken( MSL_COMMENT); }
-{CONDITIONAL_ERROR}                       { return emitToken( MSL_COMMENT); }
+{CONDITIONAL_ERROR}                       { return emitToken( CONDITIONAL_ERROR); }
 {END_OF_LINE_COMMENT}                     { return emitToken( MSL_COMMENT); }
 {C_STYLE_COMMENT}                         { return emitToken( MML_COMMENT); }
 {DOC_COMMENT}                             { return emitToken( DOC_COMMENT); }
@@ -279,6 +281,7 @@ CONDITIONAL_ERROR="#error"[^\r\n]*
 
 {mNUM_FLOAT}                              {  return emitToken( LITFLOAT); }
 {mNUM_OCT}                                {  return emitToken( LITOCT); }
+{mNUM_BIN}                                {  return emitToken( LITBIN); }
 {mNUM_HEX}                                {  return emitToken( LITHEX); }
 {mNUM_INT}                                {  return emitToken( LITINT); }
 {mREG_EXP}                                {  return emitToken( REG_EXP); }
@@ -333,12 +336,13 @@ CONDITIONAL_ERROR="#error"[^\r\n]*
 "never"                                   {  return emitToken( KNEVER);  }
 "override"                                {  return emitToken( KOVERRIDE);  }
 "inline"                                  {  return emitToken( KINLINE);  }
-"macro" /({WHITE_SPACE_CHAR}+)            {  return emitToken( KMACRO2); }
-"macro:"
-                                          {
-                                            yypushback(1); // do not consume the colon (but catch the macro keyword)
-                                            return emitToken( KMACRO2);
-                                          }
+
+// "macro" is a valid package name so to avoid problems with qnames we require the keyword to be followed
+// by whitespace or other common symbols used in code that does not involve references.
+"macro" /{WHITE_SPACE_CHAR}               {  return emitToken( KMACRO2); }
+"macro" /\(                               {  return emitToken( KMACRO2); }
+"macro" /:                                {  return emitToken( KMACRO2); }
+
 
 "untyped"                                 {  return emitToken( KUNTYPED);  }
 "typedef"                                 {  return emitToken( KTYPEDEF);  }

@@ -23,8 +23,10 @@ import com.intellij.plugins.haxe.HaxeBundle;
 import com.intellij.plugins.haxe.ide.annotator.HaxeAnnotatingVisitor;
 import com.intellij.plugins.haxe.ide.inspections.intentions.HaxeIntroduceFieldIntention;
 import com.intellij.plugins.haxe.lang.psi.*;
+import com.intellij.plugins.haxe.model.HaxeClassModel;
 import com.intellij.plugins.haxe.model.type.ResultHolder;
 import com.intellij.plugins.haxe.model.type.SpecificFunctionReference;
+import com.intellij.plugins.haxe.model.type.SpecificHaxeClassReference;
 import com.intellij.plugins.haxe.model.type.SpecificTypeReference;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
@@ -73,7 +75,7 @@ public class HaxeUnresolvedSymbolInspection extends LocalInspectionTool {
   @Override
   public ProblemDescriptor[] checkFile(@NotNull PsiFile file, @NotNull final InspectionManager manager, final boolean isOnTheFly) {
     if (!(file instanceof HaxeFile)) return null;
-    final List<ProblemDescriptor> result = new ArrayList<ProblemDescriptor>();
+    final List<ProblemDescriptor> result = new ArrayList<>();
     new HaxeAnnotatingVisitor() {
       @Override
       protected void handleUnresolvedReference(HaxeReferenceExpression reference) {
@@ -89,31 +91,43 @@ public class HaxeUnresolvedSymbolInspection extends LocalInspectionTool {
           ));
         }
 
-        PsiElement element = nameIdentifier;
         // ignore unnamed (avoid incorrect annotation for function bind etc.)
         if(reference.textMatches("_")&& !(reference.getParent() instanceof HaxeReference)) return;
 
-        TextRange from = TextRange.from(0, element.getTextLength());
-        if (reference.getParent() instanceof HaxeCallExpression callExpression) {
-          //"expand" so quickfix covers entire call expression
-          element = callExpression;
-          HaxeExpression expression = callExpression.getExpression();
-          if (expression == null) return;
-          @NotNull PsiElement[] children = expression.getChildren();
-          PsiElement child = children[children.length - 1];
-          TextRange rangeInParent = child.getTextRangeInParent();
-          int offset = rangeInParent.getStartOffset();
-          from = TextRange.from(offset, callExpression.getTextLength() - offset);
+        LocalQuickFix[] localQuickFixes = createQuickfixesIfAvailable(reference);
+
+          if (reference.getParent() instanceof HaxeCallExpression callExpression) {
+            HaxeExpression expression = callExpression.getExpression();
+
+            if (expression == null) return;
+            if(isOnTheFly) {
+            // adding "hidden" problem descriptor to the rest of the callExpression for quickfix convenience
+            // NOTE MLO: a normal annotation would be more preferable but i dont see any convenient way to add that
+            // from this part of the code, and i dont want to duplicate this code to  a different inspection.
+
+            // creating the range manually as no arg call expression wont have any Psi element that can be used as range for "();"
+              TextRange expressionTextRange = callExpression.getTextRange();
+              int identifierEnd = expression.getTextRange().getEndOffset();
+              int startOffset = identifierEnd - expressionTextRange.getStartOffset();
+              TextRange from = TextRange.from(startOffset, callExpression.getTextLength() - startOffset);
+            result.add(manager.createProblemDescriptor(
+                    callExpression,
+                    from,
+                    "",
+                    ProblemHighlightType.INFORMATION,
+                    isOnTheFly,
+                    localQuickFixes
+            ));
+          }
         }
 
-
         result.add(manager.createProblemDescriptor(
-          element,
-          from,
+          nameIdentifier,
+          nameIdentifier,
           getDisplayName(),
           ProblemHighlightType.LIKE_UNKNOWN_SYMBOL,
           isOnTheFly,
-          createQuickfixesIfAvailable(reference)
+          localQuickFixes
         ));
       }
     }.visitFile(file);
@@ -122,6 +136,7 @@ public class HaxeUnresolvedSymbolInspection extends LocalInspectionTool {
 
   private LocalQuickFix[] createQuickfixesIfAvailable(HaxeReferenceExpression reference) {
     List<LocalQuickFix> list = new ArrayList<>();
+    boolean isTypeReference = PsiTreeUtil.getParentOfType(reference, HaxeType.class) != null;
     HaxeClass targetClass = HaxeIntroduceFieldIntention.getTargetClass(reference);
     if (reference.getParent() instanceof HaxeCallExpression callExpression) {
       HaxeExpression expression = callExpression.getExpression();
@@ -135,13 +150,17 @@ public class HaxeUnresolvedSymbolInspection extends LocalInspectionTool {
       }
     }else {
       @NotNull PsiElement[] children = reference.getChildren();
-      if (children.length  == 1) { // references is "local"
-        list.add(createLocalVarQuickfix(reference));
-        list.add(createMethodParameterQuickfix(reference));
-      }
-      if (targetClass instanceof HaxeClassDeclaration || targetClass instanceof HaxeExternClassDeclaration) {
-        list.add(createFieldQuickfix(reference, targetClass));
-      }
+        if (!isTypeReference) {
+          if (children.length == 1) { // references is "local"
+            list.add(createLocalVarQuickfix(reference));
+            list.add(createMethodParameterQuickfix(reference));
+          }
+          if (targetClass instanceof HaxeClassDeclaration || targetClass instanceof HaxeExternClassDeclaration) {
+            list.add(createFieldQuickfix(reference, targetClass));
+          }
+        } else {
+          list.addAll(createTypeQuickFixes(reference));
+        }
 
       checkIfExpectedTypeIsFunctionAndCreateQuickfixes(list, reference, targetClass);
     }
@@ -156,18 +175,34 @@ public class HaxeUnresolvedSymbolInspection extends LocalInspectionTool {
     if(targetClass == null) return;
     if(reference == null) return;
 
+    if(targetClass.isEnum()) {
+      list.add(createEnumValueQuickfix(reference, targetClass));
+    }
+
     ResultHolder resultHolder = guessElementType(reference);
     if(resultHolder.isFunctionType()) {
       SpecificFunctionReference functionReference = resultHolder.getFunctionType();
       list.add(createMethodQuickfix(functionReference, reference, targetClass));
     }
-    if(resultHolder.isTypeDef()) {
+    if(resultHolder.isTypeDef() || resultHolder.isNullWrappedType()) {
       SpecificTypeReference specificTypeReference = resultHolder.getClassType().fullyResolveTypeDefAndUnwrapNullTypeReference();
       if(specificTypeReference instanceof SpecificFunctionReference functionReference) {
         list.add(createMethodQuickfix(functionReference, reference, targetClass));
       }
+      if(specificTypeReference instanceof SpecificHaxeClassReference classReference
+         && classReference.getHaxeClassModel() != null
+         && classReference.getHaxeClassModel().isCallable()) {
+        list.addAll(createMethodQuickfixesForCallable(reference, classReference.getHaxeClassModel(), targetClass));
+      }
+    }else if (resultHolder.getClassType() != null) {
+      HaxeClassModel haxeClassModel = resultHolder.getClassType().getHaxeClassModel();
+      if(haxeClassModel != null && haxeClassModel.isCallable()) {
+        list.addAll(createMethodQuickfixesForCallable(reference, haxeClassModel, targetClass));
+      }
     }
   }
+
+
 
 
   private boolean isPartOfImportStatement(HaxeReferenceExpression reference) {

@@ -74,6 +74,10 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   public HaxeClassReference getReference() {
     return new HaxeClassReference(this, this.getPsi());
   }
+  @NotNull
+  public HaxeClassReference createReference(PsiElement context) {
+    return new HaxeClassReference(this, context);
+  }
 
   @NotNull
   public ResultHolder getInstanceType() {
@@ -84,6 +88,10 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
         reference = SpecificHaxeClassReference.withGenerics(getReference(),getSpecifics());
     }
     return reference;
+  }
+  @NotNull
+  public SpecificHaxeClassReference createSpecificReference(PsiElement context) {
+        return SpecificHaxeClassReference.withGenerics(createReference(context),getSpecifics());
   }
 
   private boolean isInstanceReferenceValid() {
@@ -403,6 +411,9 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   public HaxeMethodModel getConstructor(@Nullable HaxeGenericResolver resolver) {
     return getMethod("new", resolver);
   }
+  public List<HaxeMethodModel> getConstructors(@Nullable HaxeGenericResolver resolver) {
+    return getMethods( resolver).stream().filter(HaxeMethodModel::isConstructor).toList();
+  }
 
   public boolean hasConstructor(@Nullable HaxeGenericResolver resolver) {
     return getConstructor(resolver) != null;
@@ -423,19 +434,29 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   @Nullable
   public HaxeBaseMemberModel getMember(String name, @Nullable HaxeGenericResolver resolver) {
     if (name == null) return null;
-    HaxeNamedComponent component = haxeClass.findHaxeMemberByName(name, resolver);
-    if (component != null) {
+    List<HaxeNamedComponent> members = haxeClass.findHaxeMemberByName(name, resolver);
+    if (!members.isEmpty()) {
+      HaxeNamedComponent component = members.getFirst();
       return HaxeMemberModel.fromPsi(component);
     }
     return null;
   }
 
+  @NotNull
+  public List<HaxeBaseMemberModel> getMembers(String name, @Nullable HaxeGenericResolver resolver) {
+    if (name == null) return List.of();
+    List<HaxeNamedComponent> members = haxeClass.findHaxeMemberByName(name, resolver);
+    return members.stream().map(HaxeBaseMemberModel::fromPsi).toList();
+  }
+
+  @NotNull
   public List<HaxeBaseMemberModel> getMembers(@Nullable HaxeGenericResolver resolver) {
     final List<HaxeBaseMemberModel> members = new ArrayList<>();
     members.addAll(getMethods(resolver));
     members.addAll(getFields());
     return members;
   }
+  @NotNull
   public List<HaxeBaseMemberModel> getAllMembers(@Nullable HaxeGenericResolver resolver) {
     final List<HaxeBaseMemberModel> members = new ArrayList<>();
     members.addAll(getAllMethods(resolver));
@@ -481,8 +502,9 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   }
 
   public HaxeMethodModel getMethod(String name, @Nullable HaxeGenericResolver resolver) {
-    HaxeMethodPsiMixin method = (HaxeMethodPsiMixin)haxeClass.findHaxeMethodByName(name, resolver);
-    return method != null ? method.getModel() : null;
+    List<HaxeNamedComponent> methods = haxeClass.findHaxeMethodByName(name, resolver);
+    if(!methods.isEmpty()  && methods.getFirst() instanceof HaxeMethodPsiMixin method) return method.getModel();
+    return null;
   }
 
   public List<HaxeMethodModel> getMethods(@Nullable HaxeGenericResolver resolver) {
@@ -899,9 +921,8 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
                           ? (HaxeClass) element
                           : PsiTreeUtil.getParentOfType(element, HaxeClass.class);
 
-    //TODO  cache in element ?
     if (haxeClass != null) {
-      return new HaxeClassModel(haxeClass);
+      return haxeClass.getModel();
     }
     return null;
   }

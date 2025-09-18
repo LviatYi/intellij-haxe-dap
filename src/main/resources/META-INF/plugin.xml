@@ -30,7 +30,6 @@
   <depends>com.intellij.modules.json</depends>
   <depends optional="true" config-file="flex-debugger-support.xml">com.intellij.flex</depends>
   <depends optional="true" config-file="glsl-support.xml">OpenGL-Plugin</depends>
-  <depends optional="true" config-file="debugger-support.xml">com.intellij.modules.ultimate</depends>
 
   <!-- Leave the '999' at the start of unreleased version numbers so that it's always newer than any released version. -->
   <version>DEV @plugin.dev.version@ for @plugin.compatibility.description@</version>
@@ -46,6 +45,7 @@
   </extensions>>
 
   <extensions defaultExtensionNs="com.intellij">
+
     <iconMapper mappingFile="HaxeIconMappings.json"/>
     <compileServer.plugin  classpath="jps-plugin.jar;common.jar"/>
     <testFinder implementation="com.intellij.plugins.haxe.ide.HaxeTestFinder"/>
@@ -68,7 +68,7 @@
     <sdkFinder implementation="com.intellij.plugins.haxe.haxelib.HaxeSdkFinder"/>
     <library.type implementation="com.intellij.plugins.haxe.ide.library.HaxeLibraryType"/>
 
-    <copyPastePostProcessor implementation="com.intellij.plugins.haxe.ide.actions.editor.HaxeCopyPasteReferenceProcessor"/>
+    <copyPastePostProcessor implementation="com.intellij.plugins.haxe.ide.actions.editor.copypaste.HaxeCopyPasteReferenceProcessor"/>
 
     <externalIconProvider implementationClass="com.intellij.plugins.haxe.ide.projectStructure.autoimport.HaxelibIconProvider"  key="Haxelib"/>
 
@@ -125,6 +125,8 @@
     <!-- METADATA END -->
 
     <programRunner implementation="com.intellij.plugins.haxe.runner.HaxeRunner"/>
+    <programRunner implementation="com.intellij.plugins.haxe.runner.debugger.HaxeDebugRunner"/>
+    <xdebugger.breakpointType implementation="com.intellij.plugins.haxe.runner.debugger.HaxeBreakpointType"/>
 
     <lang.parserDefinition language="Haxe" implementationClass="com.intellij.plugins.haxe.lang.parser.HaxeParserDefinition"/>
     <lang.formatter language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.formatter.HaxeFormattingModelBuilder"/>
@@ -427,6 +429,8 @@
 
     <plugins.haxe.haxeMethodsSearch implementation="com.intellij.psi.impl.search.JavaOverridingMethodsSearcher"/>
 
+    <consoleFilterProvider implementation="com.intellij.plugins.haxe.execution.console.HaxeConsoleFilterProvider"/>
+
     <intentionAction>
       <language>Haxe</language>
       <category>Haxe/Imports</category>
@@ -588,8 +592,8 @@
 
 
     <group id="Haxe.projectUtils" icon="HaxeIcons.HAXE_LOGO" popup="true"  text="Haxe" class="com.intellij.plugins.haxe.ide.actions.haxelib.HaxeActionGroup">
-      <reference id="Haxe.project.sync-libs"/>
-      <reference id="Haxe.haxlib.update-cache"/>
+      <reference ref="Haxe.project.sync-libs"/>
+      <reference ref="Haxe.haxlib.update-cache"/>
       <add-to-group group-id="ProjectViewPopupMenu"/>
       <add-to-group group-id="EditorPopupMenu"/>
     </group>

@@ -1,4 +1,49 @@
 # Changelog
+## 1.7.5
+* Added: Initial support for intellij 2025.2.
+* Added: Detecting code references in console output and making them navigatable.
+* Added: Adding quickfixes for missing constructor, missing Super call and introduce Enum value. 
+* Bugfix: Private constructors would in some cases show as unused when not.
+* Bugfix: Fixed issue where recursion guard would cause resolve to fail. (#1222)
+* Changed: shadowing static methods changed from warning to weak warning.
+* Improvement: misc minor bugfixes
+
+## 1.7.4
+* Added: Initial support for new Haxe 5 preview features (private getters & setters, binary literals) 
+* Added: Method quickfixes for when unresolved symbol has expected type is abstract with @:callable
+* Added: Console output filter to detect code references from haxe compiler and make them navigatable
+* Improvement: Copy-paste processor now also adds imports for methods and extension methods.
+* Improvement: Expanding support for extern inline overload functions to constructors and function references (#1216)
+* Fixed: FunctionTypes would cause NPE if Haxe SDK was not configured.
+
+## 1.7.3
+* Added: Support for "in" operator expressions and overloads (#1220) 
+* Bugfix: Fixed issue where resolver would incorrectly use enumValue as type (#1219) 
+* Bugfix: Fixed issue where child classes could access static members from parent class without import statement (#1218)
+* Bugfix: Fixed issue where haxelib version detection would end up with empty string as version number (#1217)
+* Added: Better support for extern inline overload functions (#1216)
+* Bugfix: Allow redefining of abstract methods if extending class is abstract(#1191)
+* Bugfix: Plugin would fail to load dev versions of haxelibs if their libpath contained white-spaces.
+* Added: quickfix for converting string concatenation to string interpolation  
+* Changed: quickfix for switching between quote types now escapes character is if necessary.
+* Changed: Unresolved symbol highlighting of callExpression now only highlight the identifier (quickfix is still available in the entire expression)
+
+
+## 1.7.2
+* Hotfix: Make sure we only add one import statement per type when performing copy-paste (Fix for #1215
+* 
+## 1.7.1
+* Bugfix: incorrect `Incompatible type: missing member` annotation for StructInit (#1214)
+* Bugfix: Correctly checking field references in @:access meta
+* Bugfix: Allow private access for sub-packages when @:allow referees to a package
+* Fixed: resolver would not find getters/setters when macro identifiers where used
+* Added: check for parameter defaults (should be const expressions).
+* Added: Folding for multiple single line comments.
+* improvement: Avoid unnecessary reparsing of functionLiterals.
+* Changed: Lime is added as a default external library when project is configured as lime/openFl project.
+* Changed: hxcpp debugger no longer require intellij ultimate 
+
+
 ## 1.7.0
 * Added: Access control annotation checking keywords(static private, public) and annotations (`@:access` `@:privateAccess`, `@:allow`)
 * Added: unused definition annotations (local functions, fields and methods).

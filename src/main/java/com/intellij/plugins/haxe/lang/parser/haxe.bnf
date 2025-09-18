@@ -201,7 +201,7 @@ fake operator ::= ":" | ";" | "," |"." | "==" | "=" | "!=" | "!" | "~" | "++" | 
               | "-" | "??=" | "??" | '?' | "||" | "|" | "|=" | "&&" | "&=" | "&" | "<<=" | "<<" | "<=" | "<" | "^="
               | "^" | "*=" | "*" | "/=" | "/" | "%=" | "%"
               | <<unsignedShiftRightAssign>> | <<shiftRightAssign>> | <<unsignedShiftRight>> | <<shiftRight>>
-              | <<gtEq>> | ">" | "..." | "in" | '->' | "=>" | "new" | "is"
+              | <<gtEq>> | ">" | "..." | "in" | '->' | "=>" | "new" | "is" |
 
 shiftLeftOperator ::= '<<'                                          { extends=operator }
 shiftRightOperator ::= <<shiftRight>>                               { extends=operator }
@@ -225,6 +225,7 @@ additiveOperator ::= '+' | '-'        { extends=operator }
 assignableOperator ::= '++' | '--'    { extends=operator }
 colonOperator ::= ':'                 { extends=operator }
 isOperator ::= 'is'                   { extends=operator }
+inOperator ::= 'in'                   { extends=operator }
 iteratorOperator ::= '...'            { extends=operator }
 logicAndOperator ::= '&&'             { extends=operator }
 logicOrOperator ::= '||'              { extends=operator }
@@ -369,7 +370,7 @@ private moduleBodyPart ::=  topLevelDeclaration |  moduleFieldDeclaration |  mod
 moduleFieldDeclaration ::= moduleMemberModifier* mutabilityModifier componentName propertyDeclaration? typeTag? varInit? <<semicolonUnlessPrecededByStatement>>
 {pin=3 extends=fieldDeclaration}
 
-macroClassDeclaration ::= classModifierList? 'class' componentName? genericParam? inheritList? classBody
+macroClassDeclaration ::= classModifierList? 'class' componentName? genericParam? inheritList? classBody{extends=classDeclaration}
 classDeclaration ::= classModifierList? 'class' componentName genericParam? inheritList? classBody
 {pin=3 mixin="com.intellij.plugins.haxe.lang.psi.impl.AbstractHaxePsiClass" implements="com.intellij.plugins.haxe.lang.psi.HaxeClass"}
 
@@ -445,11 +446,11 @@ localVarDeclarationList ::='static'? mutabilityModifier localVarDeclaration (','
 localVarDeclaration ::= 'static'? componentName typeTag? varInit?
   {recoverWhile="local_var_declaration_part_recover" mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxePsiFieldImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxePsiField"}
 private localVarDeclarationWithInit ::= componentName typeTag? varInit {extends=localVarDeclaration}
-private local_var_declaration_part_recover ::= !(!<<isSemicolonRuleEnabled>> | ';' |  '{' | '}' | '!'  | '(' | ')' | '++' | ',' | '-' | '--' | '[' | 'break' | 'case' | 'cast' | 'continue' | 'default' | 'do' | 'else' | 'false' | 'final' | 'for' | 'function' | 'if' | 'new' | 'null' | 'return' | 'super' | 'switch' | 'this' | 'throw' | 'true' | 'try' | 'untyped' | 'var' | 'while' | '~' | ID | MACRO_ID | OPEN_QUOTE | LITFLOAT | LITHEX | LITINT | LITOCT | REG_EXP | ppToken)
+private local_var_declaration_part_recover ::= !(!<<isSemicolonRuleEnabled>> | ';' |  '{' | '}' | '!'  | '(' | ')' | '++' | ',' | '-' | '--' | '[' | 'break' | 'case' | 'cast' | 'continue' | 'default' | 'do' | 'else' | 'false' | 'final' | 'for' | 'function' | 'if' | 'new' | 'null' | 'return' | 'super' | 'switch' | 'this' | 'throw' | 'true' | 'try' | 'untyped' | 'var' | 'while' | '~' | ID | MACRO_ID | OPEN_QUOTE | LITFLOAT | LITHEX | LITINT | LITOCT | LITBIN | REG_EXP | ppToken)
 
 propertyDeclaration ::= '(' propertyAccessor ',' propertyAccessor ')'
 
-propertyAccessor ::= 'null' | 'default' | 'dynamic' | 'never' | 'get' | 'set' | referenceExpression
+propertyAccessor ::= 'null' | 'default' | 'dynamic' | 'never' | ('private'? 'get') | ('private'? 'set') | referenceExpression
 {mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeReferenceImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxeReference"}
 
 private functionCommonBody ::= blockStatement
@@ -517,7 +518,7 @@ parameterList ::= (parameter ((',' parameter)* (',' restParameter)?)? | restPara
 private parameterListRecovery ::= !('(' | ')')  // Open parens are allowable in arrow function arguments.
 
 private arrowFunctionLiteral ::= arrowFunctionDeclaration
-private keywordFunctionLiteral ::= 'function' componentName? parenthesizedParameterList typeTag? untypedKeyword? lambdaBody {pin=2}
+private keywordFunctionLiteral ::= 'function' componentName? parenthesizedParameterList typeTag? untypedKeyword? lambdaBody {pin=3}
 functionLiteral ::= keywordFunctionLiteral | arrowFunctionLiteral // TODO considder extending functionType and implement logic to find arguments and return type
 
 arrayLiteral ::= <<isInitializersAllowed>> '[' (expressionList ','?)? ']'
@@ -717,7 +718,7 @@ private returnValue ::= objectLiteral
                       | statement
                       | expression
                       | localVarDeclarationList   // Void value, so allowable, but not useful
-lamdaReturnStatement ::= 'return' (returnValue)? {implements="returnStatement"}
+lamdaReturnStatement ::= 'return' (returnValue)? { pin = 1 implements="returnStatement"}
 returnStatement ::= 'return' (returnValue)? <<semicolonUnlessFollowedByElseOrCatchOrStatement>>
 
 breakStatement ::= 'break' <<semicolonUnlessFollowedByElseOrCatchKeyword>> // semi optional in guarded statement
@@ -726,7 +727,7 @@ continueStatement ::= 'continue' <<semicolonUnlessFollowedByElseOrCatchKeyword>>
 throwStatement ::= 'throw' expression ';'?
 
 // TODO: Allow multiple, comma delimited, expressions on switch statement.
-switchStatement ::= 'switch' expression switchBlock
+switchStatement ::= 'switch' expression switchBlock {pin=1}
 switchBlock ::= '{' (switchCase | defaultCase)* '}'{pin=1}
 
 switchCaseBlock ::=  statementList | (literalExpression <<semicolonUnlessPrecededByStatement>>)
@@ -805,7 +806,7 @@ elseStatement ::= 'else' statement
 ifStatement ::= guard guardedStatement (';'? elseStatement)? ';'? {pin=1}
 
 tryStatement ::= 'try' statement ';'? catchStatement*
-catchStatement ::= 'catch' '(' parameter ')' statement ';'?
+inner catchStatement ::= 'catch' '(' parameter ')' statement ';'?
 
 /*
  * expressions
@@ -838,7 +839,7 @@ expressionList ::= forStatement | whileStatement | (expression (',' expression)*
 // '(' is here to prevent call expressions from consuming enum extractor expressions
 private expression_list_recover ::= !(')' | ']' |'('| fatArrowOperator)
 
-private expression_recover ::= !( ';' |'.' | ID |  MACRO_ID | LITFLOAT | LITHEX | LITINT | LITOCT | OPEN_QUOTE | CLOSING_QUOTE | META_ID | REG_EXP | LONG_TEMPLATE_ENTRY_END  '!' | '!=' | '%' | '%=' | '&&' | '&' | '&=' | '(' | ')' | '*' | '*=' | '+' | '++' | '+=' | ',' | '-' | '--' | '-=' | '...' | '/' | '/=' | ':' |  '<' | '<<' | '<<=' | '<=' | '=' | '==' | '>' | <<shiftRight>> | <<unsignedShiftRight>> | <<gtEq>> | <<shiftRightAssign>> | <<unsignedShiftRightAssign>> | '?' | '[' | ']' | '^' | '^=' | 'break' | 'case' | 'cast' | 'catch' | 'continue' | 'default' | 'do' | 'dynamic' | 'else'  | 'false' | 'final' | 'for' | 'function' | 'if' | 'inline' | 'new' | 'null' | 'return' | 'static' | 'super' | 'switch' | 'this' | 'throw' | 'true' | 'try' | 'untyped' | 'var' | 'while' | 'in' |'{' | '|' | '|=' | '||' | '}' | '~'  | '=>'| '$'  | 'override' | 'private' | 'public' | 'extern') !metaKeyWord
+private expression_recover ::= !( ';' |'.' | ID |  MACRO_ID | LITFLOAT | LITHEX | LITINT | LITOCT | LITBIN | OPEN_QUOTE | CLOSING_QUOTE | META_ID | REG_EXP | LONG_TEMPLATE_ENTRY_END  '!' | '!=' | '%' | '%=' | '&&' | '&' | '&=' | '(' | ')' | '*' | '*=' | '+' | '++' | '+=' | ',' | '-' | '--' | '-=' | '...' | '/' | '/=' | ':' |  '<' | '<<' | '<<=' | '<=' | '=' | '==' | '>' | <<shiftRight>> | <<unsignedShiftRight>> | <<gtEq>> | <<shiftRightAssign>> | <<unsignedShiftRightAssign>> | '?' | '[' | ']' | '^' | '^=' | 'break' | 'case' | 'cast' | 'catch' | 'continue' | 'default' | 'do' | 'dynamic' | 'else'  | 'false' | 'final' | 'for' | 'function' | 'if' | 'inline' | 'new' | 'null' | 'return' | 'static' | 'super' | 'switch' | 'this' | 'throw' | 'true' | 'try' | 'untyped' | 'var' | 'while' | 'in' |'{' | '|' | '|=' | '||' | '}' | '~'  | '=>'| '$'  | 'override' | 'private' | 'public' | 'extern') !metaKeyWord
 
 // This list is in reversed operator precedence order -- lowest on top.
 // The things on top are still matched first.
@@ -856,6 +857,7 @@ expression ::= assignExpression
              | additiveExpression
              | multiplicativeExpression
              | moduloExpression
+             | inExpression
              | isTypeExpression         // With Haxe 4.2, won't compile with prefix; lower than postfix or value.
              | prefixExpression
              | valueOrPostfixExpression
@@ -890,6 +892,10 @@ shiftExpression ::= expression shiftOperator expression                       { 
 additiveExpression ::= expression additiveOperator expression                 { extends=binaryExpression }
 multiplicativeExpression ::= expression multiplicativeOperator expression     { extends=binaryExpression }
 moduloExpression ::= expression moduloOperator expression                     { extends=binaryExpression }
+
+// nessesary for @:op(A in B) support,  (a in someAbstract) is valid expression
+// https://github.com/HaxeFoundation/haxe/issues/6224
+inExpression ::= expression inOperator expression                     { extends=binaryExpression }
 
 prefixExpression ::= (prefixOperator (valueExpression postfixExpression?))
                    | (assignableOperator valueExpression)           { extends=unaryExpression }
@@ -933,30 +939,39 @@ private value ::= ('untyped' expression)
                 | throwStatement
                 | (safeCastExpression (qualifiedReferenceTail | CallArrayOrReferenceExpression*)?)
                 | unsafeCastExpression
-                | callFunctionLiteral
-                | immediateArrayAccess
-                | (literalExpression qualifiedReferenceTail?)
+                | (valueLiteralExpression qualifiedReferenceTail?)
                 | objectLiteral
                 | valueReference
                 | localVarDeclarationWithInit
 {pin=1 }
 private valueReference ::= ( macroExpressionReification | callOrArrayTail) (qualifiedReferenceTail | CallArrayOrReferenceExpression* qualifiedReferenceTail*)?;
+// optimization (we want to avoid parsing complex structures multiple times, ex. functionLiteral with immediate call, vs just the functionLiteral)
+private valueLiteralExpression ::= constantExpression
+                    | mapLiteral arrayAccessExpression?
+                    | arrayLiteral arrayAccessExpression?
+                    | functionLiteral callExpression?
+                    | objectLiteral
+                    | valueInitBlock
 
-literalExpression ::= LITINT | LITHEX | LITOCT | LITFLOAT
-                    | 'null' | 'true' | 'false'
-                    | stringLiteralExpression
-                    | regularExpressionLiteral
+
+
+literalExpression ::= constantExpression
                     | mapLiteral
                     | arrayLiteral
-                    | objectLiteral
-                    | blockStatement
                     | functionLiteral
+                    | objectLiteral
+                    | valueInitBlock
+
 {mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeReferenceImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxeReference" name="literal expression"}
-constantExpression ::= LITINT | LITHEX | LITOCT | LITFLOAT
-                             | 'null' | 'true' | 'false'
-                             | stringLiteralExpression
-                             | regularExpressionLiteral
-{mixin="com.intellij.plugins.haxe.lang.psi.impl.HaxeReferenceImpl" implements="com.intellij.plugins.haxe.lang.psi.HaxeReference" name="constant expression"}
+
+valueInitBlock ::= blockStatement {extends=literalExpression}
+
+constantExpression ::= LITINT | LITHEX
+                     | LITOCT | LITBIN | LITFLOAT
+                     | 'null' | 'true' | 'false'
+                     | stringLiteralExpression
+                     | regularExpressionLiteral
+{extends=literalExpression}
 
 
 stringLiteralExpression ::= OPEN_QUOTE (REGULAR_STRING_PART | shortTemplateEntry | longTemplateEntry)* CLOSING_QUOTE
@@ -978,10 +993,7 @@ typeCheckExpr ::= expression typeCheckOperator typeWrapper
 private CallArrayOrReferenceExpression::= (callExpression | arrayAccessExpression |qualifiedNullSafeReferenceExpression)
 private newExpressionOrCall ::=  newExpression qualifiedReferenceTail?
 private qualifiedReferenceTail ::= qualifiedNullSafeReferenceExpression CallArrayOrReferenceExpression*
-
-private callFunctionLiteral ::= functionLiteral callExpression
 private callOrArrayTail ::= 'inline'? ( thisSuperAbstractOrReferenceExpression | parenthesizedExpression)
-private immediateArrayAccess ::= arrayLiteral arrayAccessExpression
 
 // spread operator only allowed  as last  last argument in calls expressions
 spreadExpression ::= (iteratorOperator (referenceExpression | arrayLiteral)) { extends = unaryExpression}

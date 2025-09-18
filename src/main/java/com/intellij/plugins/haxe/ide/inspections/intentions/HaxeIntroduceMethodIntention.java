@@ -21,7 +21,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.*;
 
 import static com.intellij.plugins.haxe.ide.inspections.intentions.HaxeIntroduceUtil.findInsertAfterElementForMethod;
-import static com.intellij.plugins.haxe.ide.inspections.intentions.HaxeIntroduceUtil.findTypesRequiringImportsAndAddToFile;
+import static com.intellij.plugins.haxe.ide.inspections.intentions.HaxeIntroduceUtil.findTypesRequiringImportsForMethodAndAddToFile;
 
 public class HaxeIntroduceMethodIntention
   extends HaxeUnresolvedSymbolIntentionBase<HaxeCallExpression>
@@ -64,8 +64,6 @@ public class HaxeIntroduceMethodIntention
     methodDeclaration = anchor.getParent().addAfter(methodDeclaration, anchor);
     anchor.getParent().addBefore(createNewLine(project), methodDeclaration);
 
-//    generateMissingImports()
-
     methodDeclaration = CodeStyleManager.getInstance(project).reformat(methodDeclaration);
     if(!preview) {
       if(methodDeclaration instanceof HaxeMethodDeclaration declaration) {
@@ -75,7 +73,7 @@ public class HaxeIntroduceMethodIntention
 
         ResultHolder knownReturnType = guessElementType(myPsiElementPointer.getElement());
         if(knownReturnType.isDynamic() || knownReturnType.isUnknown()) knownReturnType = null;
-        findTypesRequiringImportsAndAddToFile(parameters, getKnownParameterTypeList(), returnType, knownReturnType, anchor.getContainingFile());
+        findTypesRequiringImportsForMethodAndAddToFile(parameters, getKnownParameterTypeList(), returnType, knownReturnType, anchor.getContainingFile());
       }
     }
     return anchor.getContainingFile();

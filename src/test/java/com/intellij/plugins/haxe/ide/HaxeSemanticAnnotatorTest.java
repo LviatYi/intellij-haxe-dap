@@ -44,6 +44,21 @@ public class HaxeSemanticAnnotatorTest extends HaxeSemanticAnnotatorTestBase {
 
 
   @Test
+  public void testAssignUnknownTwice() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testUpdateUnknownInGenerics() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testUpdateUnknownOnLambdas() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
   public void testFixPackage() throws Exception {
     doTestActions("Fix package");
   }
@@ -122,6 +137,9 @@ public class HaxeSemanticAnnotatorTest extends HaxeSemanticAnnotatorTestBase {
     myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
     doTestNoFixWithWarnings();
   }
+  public void testAbstractClassMethodImplementation() throws Exception {
+    doTestNoFixWithWarnings();
+  }
   @Test
   public void testAbstractKeywords() throws Exception {
     myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
@@ -184,6 +202,11 @@ public class HaxeSemanticAnnotatorTest extends HaxeSemanticAnnotatorTestBase {
 
   @Test
   public void testOverrideVisibility() throws Exception {
+    doTestNoFixWithWeakWarnings();
+  }
+
+  @Test
+  public void testParameterDefaultValues() throws Exception {
     doTestNoFixWithWeakWarnings();
   }
 
@@ -336,6 +359,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeSemanticAnnotatorTestBase {
   }
 
   @Test
+  public void testStaticFieldAccess() throws Exception {
+    doTestNoFixWithoutWarnings();
+  }
+  @Test
   public void testStaticsInExtended() throws Exception {
     doTestNoFixWithoutWarnings();
   }
@@ -419,6 +446,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeSemanticAnnotatorTestBase {
   }
   @Test
   public void testAssignAnonymousType() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+  @Test
+  public void testAssignAnonymousTypeStruct() throws Exception {
     doTestNoFixWithWarnings();
   }
 
@@ -644,6 +675,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeSemanticAnnotatorTestBase {
 
   @Test
   public void testMissingInterfaceMethodsOnConstrainedGenericOverrides() throws Exception {
+      doTestNoFixWithWarnings();
+  }
+  @Test
+  public void testMissingReturnStatement() throws Exception {
       doTestNoFixWithWarnings();
   }
   @Test
@@ -912,6 +947,27 @@ public class HaxeSemanticAnnotatorTest extends HaxeSemanticAnnotatorTestBase {
   public void testLocalVarImmutability() throws Exception {
     doTestNoFixWithWarnings();
   }
+
+  @Test
+  public void testExternOverloadLocal() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testExternOverloadConstructor() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testExternOverloadInstance() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testExternOverloadStatic() throws Exception {
+    doTestNoFixWithWarnings();
+  }
+
   @Test
   public void testFieldImmutability() throws Exception {
     doTestNoFixWithWarnings();
@@ -935,6 +991,10 @@ public class HaxeSemanticAnnotatorTest extends HaxeSemanticAnnotatorTestBase {
   }
   @Test
   public void testOperatorAbstractTest() throws Throwable {
+    doTestNoFixWithWarnings();
+  }
+  @Test
+  public void testOperatorAbstractTest2() throws Throwable {
     doTestNoFixWithWarnings();
   }
   @Test
@@ -966,13 +1026,26 @@ public class HaxeSemanticAnnotatorTest extends HaxeSemanticAnnotatorTestBase {
   }
 
   @Test
+  public void testSuperConstructor() throws Throwable {
+    myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
+    doTestNoFixWithWarnings();
+  }
+
+  @Test
   public void testSwitchPatternMatching() throws Throwable {
     myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
     doTestNoFixWithWarnings();
   }
+
   @Test
   public void testSwitchStatements() throws Throwable {
     doTestNoFixWithWarnings();
+  }
+
+  @Test
+  public void testTypeAndEnumIdenticalNames() throws Throwable {
+    myFixture.enableInspections(HaxeUnresolvedSymbolInspection.class);
+    doTestNoFixWithWarnings("test/AbstractEnum.hx");
   }
 
   @Test
