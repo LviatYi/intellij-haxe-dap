@@ -1618,7 +1618,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
       // Don't synchronize around the accept.  It locks up the rest of the debugger still
       // running on the AWT thread if the application isn't starting correctly.
       if (debugSocket == null) {
-        var port = remoteUrl == null ? this.port : 6972;
+        var port = remoteUrl != null ? this.port : 6972;
 
         try {
           serverSocket = new ServerSocket(port);
