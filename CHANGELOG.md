@@ -4,6 +4,8 @@
 
 * Changed: Modify the import sorting function. Now, the import statements within the conditional macro will be ignored and will not be placed in the sort.
 * Changed: Display the name of the method in the stack frame.
+* Fixed: Unelicited temporary breakpoints.
+* Fixed: Adjust HaxeReadWriteAccessDetector order as entry points.
 * Fixed: Some issues in debugger(dap).
 
 ## 2.0.7(1.6b)
