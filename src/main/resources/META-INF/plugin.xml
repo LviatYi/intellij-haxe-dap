@@ -247,6 +247,7 @@
 
     <codeFoldingOptionsProvider instance="com.intellij.plugins.haxe.ide.folding.HaxeFoldingOptionsProvider"/>
     <applicationService serviceImplementation="com.intellij.plugins.haxe.ide.folding.HaxeFoldingSettings"/>
+    <breadcrumbsInfoProvider implementation="com.intellij.plugins.haxe.ide.folding.HaxeBreadcrumbsProvider"/>
 
     <additionalTextAttributes scheme="Default" file="colorSchemes/HaxeDefault.xml"/>
     <additionalTextAttributes scheme="Darcula" file="colorSchemes/HaxeDarcula.xml"/>
