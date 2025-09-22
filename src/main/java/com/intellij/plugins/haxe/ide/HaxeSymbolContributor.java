@@ -17,17 +17,18 @@
  */
 package com.intellij.plugins.haxe.ide;
 
-import com.intellij.navigation.ChooseByNameContributor;
+import com.intellij.navigation.GotoClassContributor;
 import com.intellij.navigation.NavigationItem;
 import com.intellij.openapi.project.Project;
 import com.intellij.plugins.haxe.ide.index.HaxeSymbolIndex;
 import com.intellij.plugins.haxe.lang.psi.HaxeComponentName;
 import com.intellij.psi.search.GlobalSearchScope;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 
-public class HaxeSymbolContributor implements ChooseByNameContributor {
+public class HaxeSymbolContributor implements GotoClassContributor {
   @NotNull
   @Override
   public String[] getNames(@NotNull final Project project, final boolean includeNonProjectItems) {
@@ -44,5 +45,15 @@ public class HaxeSymbolContributor implements ChooseByNameContributor {
     final GlobalSearchScope scope = includeNonProjectItems ? GlobalSearchScope.allScope(project) : GlobalSearchScope.projectScope(project);
     final Collection<HaxeComponentName> result = HaxeSymbolIndex.getItemsByName(name, project, scope);
     return result.toArray(new NavigationItem[0]);
+  }
+
+  @Override
+  public @Nullable String getQualifiedName(@NotNull NavigationItem item) {
+    return null;
+  }
+
+  @Override
+  public @Nullable String getQualifiedNameSeparator() {
+    return ":";
   }
 }

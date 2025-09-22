@@ -5,6 +5,7 @@
 * Changed: Modify the import sorting function. Now, the import statements within the conditional macro will be ignored and will not be placed in the sort.
 * Changed: Display the name of the method in the stack frame.
 * Changed: Add support for sticky lines.
+* Added: The delimiter ":" is allowed to be used for Symbol queries.
 * Fixed: Unelicited temporary breakpoints.
 * Fixed: Adjust HaxeReadWriteAccessDetector order as entry points.
 * Fixed: Some issues in debugger(dap).
