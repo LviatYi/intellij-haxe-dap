@@ -272,5 +272,38 @@ public class HaxeMethodModel extends HaxeMemberModel implements HaxeExposableMod
     }
     return null;
   }
+
+  @Nullable
+  public HaxeFieldModel getDeclaredProp() {
+    HaxeClassModel declaringClass = this.getDeclaringClass();
+    if (declaringClass == null) return null;
+
+    HaxeAccessorType inferAccessorType;
+    if (this.name.startsWith("get_")) {
+      inferAccessorType = HaxeAccessorType.GET;
+    }
+    else if (this.name.startsWith("set_")) {
+      inferAccessorType = HaxeAccessorType.SET;
+    }
+    else {
+      return null;
+    }
+
+    String inferPropName = this.name.substring("get_".length());
+    HaxeFieldModel field = declaringClass.getField(inferPropName, null);
+
+    if (field == null || !field.isProperty()) return null;
+
+    switch (inferAccessorType) {
+      case GET:
+        if (field.getGetterMethod() != this) field = null;
+        break;
+      case SET:
+        if (field.getSetterMethod() != this) field = null;
+        break;
+    }
+
+    return field;
+  }
 }
 
