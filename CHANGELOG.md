@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.8(1.6b)
+
 * Changed: Modify the import sorting function. Now, the import statements within the conditional macro will be ignored and will not be placed in the sort.
 * Changed: Display the name of the method in the stack frame.
 * Changed: Add support for sticky lines.
