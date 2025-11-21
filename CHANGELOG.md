@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-## 2.0.8(1.6b)
+* Changed: Additional type support has been added to breadcrumbs.
+
+## 2.0.8(1.6.7)
 
 * Changed: Modify the import sorting function. Now, the import statements within the conditional macro will be ignored and will not be placed in the sort.
 * Changed: Display the name of the method in the stack frame.
@@ -13,7 +15,7 @@
 * Fixed: Adjust HaxeReadWriteAccessDetector order as entry points.
 * Fixed: Some issues in debugger(dap).
 
-## 2.0.7(1.6b)
+## 2.0.7(1.6.7)
 
 * Changed: Merge Intellij-Haxe 1.6.4 into this repo.
 * Added: add support for typeTag may contained parentheses  

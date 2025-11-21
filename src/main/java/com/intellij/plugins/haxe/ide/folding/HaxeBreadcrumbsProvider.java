@@ -2,6 +2,7 @@ package com.intellij.plugins.haxe.ide.folding;
 
 import com.intellij.lang.Language;
 import com.intellij.openapi.util.NlsSafe;
+import com.intellij.plugins.haxe.HaxeComponentType;
 import com.intellij.plugins.haxe.HaxeLanguage;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.psi.PsiElement;
@@ -12,7 +13,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.util.Objects;
 
 public class HaxeBreadcrumbsProvider implements BreadcrumbsProvider {
   @Override
@@ -22,80 +22,83 @@ public class HaxeBreadcrumbsProvider implements BreadcrumbsProvider {
 
   @Override
   public boolean acceptElement(@NotNull PsiElement element) {
-    return element instanceof HaxeClassDeclaration ||
-           element instanceof HaxeEnumDeclaration ||
-           element instanceof HaxeInterfaceDeclaration ||
-           element instanceof HaxeMethodDeclaration ||
-           element instanceof HaxeTypedefDeclaration ||
-           element instanceof HaxeFile;
+    return switch (element) {
+      case HaxeClassDeclaration ignore -> true;
+      case HaxeExternClassDeclaration ignore -> true;
+      case HaxeAbstractTypeDeclaration ignore -> true;
+      case HaxeEnumDeclaration ignore -> true;
+      case HaxeInterfaceDeclaration ignore -> true;
+      case HaxeExternInterfaceDeclaration ignore -> true;
+      case HaxeMethodDeclaration ignore -> true;
+      case HaxeLocalFunctionDeclaration ignore -> true;
+      case HaxeTypedefDeclaration ignore -> true;
+      case HaxeFile ignore -> true;
+      default -> false;
+    };
+  }
+
+  @Override
+  public boolean acceptStickyElement(@NotNull PsiElement element) {
+    if (element instanceof HaxeFile) {
+      return false;
+    }
+
+    return BreadcrumbsProvider.super.acceptStickyElement(element);
   }
 
   @Override
   public @NotNull @NlsSafe String getElementInfo(@NotNull PsiElement element) {
-    String name = null;
-    if (element instanceof HaxeClassDeclaration) {
-      name = ((HaxeClassDeclaration)element).getName();
-    }
-    else if (element instanceof HaxeEnumDeclaration) {
-      name = ((HaxeEnumDeclaration)element).getName();
-    }
-    else if (element instanceof HaxeInterfaceDeclaration) {
-      name = ((HaxeInterfaceDeclaration)element).getName();
-    }
-    else if (element instanceof HaxeMethodDeclaration) {
-      name = ((HaxeMethodDeclaration)element).getName() + "()";
-    }
-    else if (element instanceof HaxeTypedefDeclaration) {
-      name = ((HaxeTypedefDeclaration)element).getName();
-    }
+    String name = switch (element) {
+      case HaxeClassDeclaration declaration -> declaration.getName();
+      case HaxeExternClassDeclaration declaration -> declaration.getName();
+      case HaxeAbstractTypeDeclaration declaration -> declaration.getName();
+      case HaxeEnumDeclaration declaration -> declaration.getName();
+      case HaxeInterfaceDeclaration declaration -> declaration.getName();
+      case HaxeExternInterfaceDeclaration declaration -> declaration.getName();
+      case HaxeMethodDeclaration declaration -> declaration.getName() + "()";
+      case HaxeLocalFunctionDeclaration declaration -> declaration.getName() + "()";
+      case HaxeTypedefDeclaration declaration -> declaration.getName();
+      case HaxeFile declaration -> declaration.getName();
+      default -> null;
+    };
 
-    return name == null ? "" : name;
+    return name == null ? "<unknown>" : name;
   }
 
   @Override
   public @Nullable PsiElement getParent(@NotNull PsiElement element) {
-    if (element instanceof HaxeMethodDeclaration) {
-      var classParent = ((HaxeMethodDeclaration)element).getContainingClass();
-      if (classParent != null) {
-        return classParent;
-      }
+    var classParent = switch (element) {
+      case HaxeMethodDeclaration declaration -> declaration.getContainingClass();
+      case HaxeLocalFunctionDeclaration declaration -> declaration.getContainingClass();
+      default -> null;
+    };
+    if (classParent != null) {
+      return classParent;
     }
 
-    if (element instanceof HaxeMethodDeclaration ||
-        element instanceof HaxeClassDeclaration ||
-        element instanceof HaxeEnumDeclaration ||
-        element instanceof HaxeTypedefDeclaration ||
-        element instanceof HaxeInterfaceDeclaration) {
-      return element.getContainingFile();
-    }
-    else {
-      return PsiTreeUtil.getParentOfType(element,
-                                         HaxeClassDeclaration.class,
-                                         HaxeEnumDeclaration.class,
-                                         HaxeInterfaceDeclaration.class,
-                                         HaxeTypedefDeclaration.class,
-                                         HaxeMethodDeclaration.class);
-    }
+    return switch (element) {
+      case HaxeClassDeclaration declaration -> declaration.getContainingFile();
+      case HaxeExternClassDeclaration declaration -> declaration.getContainingFile();
+      case HaxeAbstractTypeDeclaration declaration -> declaration.getContainingFile();
+      case HaxeEnumDeclaration declaration -> declaration.getContainingFile();
+      case HaxeInterfaceDeclaration declaration -> declaration.getContainingFile();
+      case HaxeExternInterfaceDeclaration declaration -> declaration.getContainingFile();
+      case HaxeTypedefDeclaration declaration -> declaration.getContainingFile();
+      case HaxeMethodDeclaration declaration -> declaration.getContainingFile();
+      case HaxeLocalFunctionDeclaration declaration -> declaration.getContainingFile();
+      default -> PsiTreeUtil.getParentOfType(element,
+                                             HaxeClassDeclaration.class,
+                                             HaxeEnumDeclaration.class,
+                                             HaxeInterfaceDeclaration.class,
+                                             HaxeTypedefDeclaration.class,
+                                             HaxeMethodDeclaration.class);
+    };
   }
 
   @Override
   public @Nullable Icon getElementIcon(@NotNull PsiElement element) {
-    if (element instanceof HaxeClassDeclaration) {
-      return HaxeIcons.Class;
-    }
-    else if (element instanceof HaxeEnumDeclaration) {
-      return HaxeIcons.Enum;
-    }
-    else if (element instanceof HaxeInterfaceDeclaration) {
-      return HaxeIcons.Interface;
-    }
-    else if (element instanceof HaxeMethodDeclaration) {
-      return HaxeIcons.Method;
-    }
-    else if (element instanceof HaxeTypedefDeclaration) {
-      return HaxeIcons.Typedef;
-    }
-
-    return null;
+    if (element instanceof HaxeFile) return HaxeIcons.HAXE_LOGO;
+    HaxeComponentType componentType = HaxeComponentType.typeOf(element);
+    return componentType == null ? null : componentType.getIcon();
   }
 }
