@@ -4,6 +4,11 @@
 
 * Changed: Additional type support has been added to breadcrumbs.
 
+## 2.0.9(1.6.7)
+
+* Added: Support execute parameter settings.
+* Changed: Perf breadcrumb & sticky lines.
+
 ## 2.0.8(1.6.7)
 
 * Changed: Modify the import sorting function. Now, the import statements within the conditional macro will be ignored and will not be placed in the sort.

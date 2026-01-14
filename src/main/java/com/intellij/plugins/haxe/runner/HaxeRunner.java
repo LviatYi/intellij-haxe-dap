@@ -139,6 +139,7 @@ public class HaxeRunner extends GenericProgramRunner<RunnerSettings> {
           }
           commandLine.withWorkDirectory(workDirPath);
           commandLine.setExePath(configuration.getCustomFileToLaunchPath());
+          commandLine.addParameters(configuration.getCustomExecuteParamList());
 
           final TextConsoleBuilder consoleBuilder = TextConsoleBuilderFactory.getInstance().createBuilder(module.getProject());
           setConsoleBuilder(consoleBuilder);

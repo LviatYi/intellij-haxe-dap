@@ -58,8 +58,10 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
   private JTextField myDebugListenPort;
   private JCheckBox myRemoteDebuggingCheckBox;
   private JTextField myCustomRemoteUrlField;
+  private JTextField myAdditionalParametersField;
 
   private String customPathToFile = "";
+  private String additionalParameters = "";
   private String customPathToExecutable = "";
   private String customWorkDirectory = "";
   private String customRemoteUrl = LocalHostUrl;
@@ -107,6 +109,21 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
         final VirtualFile file = FileChooser.chooseFile(descriptor, component, null, null);
         if (file != null) {
           customPathToFile = FileUtil.toSystemIndependentName(file.getPath());
+          updateComponents();
+        }
+      }
+    });
+
+    myAdditionalParametersField.addFocusListener(new FocusListener() {
+      @Override
+      public void focusGained(FocusEvent e) {
+      }
+
+      @Override
+      public void focusLost(FocusEvent e) {
+        String paramList = myAdditionalParametersField.getText();
+        if (!additionalParameters.equals(paramList)) {
+          additionalParameters = paramList;
           updateComponents();
         }
       }
@@ -215,6 +232,7 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
     String launchPath = configuration.getCustomFileToLaunchPath();
     launchPath = !launchPath.contains("://") ? FileUtil.toSystemDependentName(launchPath) : launchPath;
     customPathToFile = launchPath;
+    additionalParameters = configuration.getCustomExecuteParams();
 
     launchPath = configuration.getCustomExecutablePath();
     launchPath = !launchPath.contains("://") ? FileUtil.toSystemDependentName(launchPath) : launchPath;
@@ -256,6 +274,8 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
       myPathToFileTextField.setText("");
     }
     myPathToFileTextField.setEnabled(myCustomPathCheckBox.isSelected());
+    myAdditionalParametersField.setText(additionalParameters);
+    myAdditionalParametersField.setEnabled(myCustomPathCheckBox.isSelected());
   }
 
   private void updateCustomPathToExecutable() {
@@ -282,6 +302,7 @@ public class HaxeRunConfigurationEditorForm extends SettingsEditor<HaxeApplicati
       String fileName = myPathToFileTextField.getText();
       fileName = !fileName.contains("://") ? FileUtil.toSystemIndependentName(fileName) : fileName;
       configuration.setCustomFileToLaunchPath(fileName);
+      configuration.setCustomExecuteParams(myAdditionalParametersField.getText());
     }
     if (myAlternativeExecutable.isSelected()) {
       String fileName = myExecutableField.getText();

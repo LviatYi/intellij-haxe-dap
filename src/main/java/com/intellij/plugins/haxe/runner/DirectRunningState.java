@@ -95,7 +95,7 @@ public class DirectRunningState extends CommandLineState {
 
     commandLine.setWorkDirectory(config.getCustomWorkingDirectory());
     commandLine.setExePath(config.getCustomFileToLaunchPath());
-    commandLine.addParameter("/Log2VSC:True");
+    commandLine.addParameters(config.getCustomExecuteParamList());
 
     final TextConsoleBuilder consoleBuilder = TextConsoleBuilderFactory.getInstance().createBuilder(module.getProject());
     setConsoleBuilder(consoleBuilder);

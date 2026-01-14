@@ -40,14 +40,17 @@ import com.intellij.util.xmlb.XmlSerializer;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 
 public class HaxeApplicationConfiguration extends HaxeApplicationConfigurationBase
   implements RunConfigurationWithSuppressedDefaultRunAction {
   private boolean customFileToLaunch = false;
   private String customFileToLaunchPath = "";
   private String customExecutablePath = "";
+  private String customExecuteParams = "";
   private String customWorkingDirectory = "";
   private boolean customExecutable = false;
   private boolean customUseWorkingDir = false;
@@ -145,6 +148,20 @@ public class HaxeApplicationConfiguration extends HaxeApplicationConfigurationBa
 
   public void setCustomWorkingDirectory(String customWorkingDirectory) {
     this.customWorkingDirectory = customWorkingDirectory;
+  }
+
+  public String getCustomExecuteParams() {
+    return this.customExecuteParams == null ? "" : this.customExecuteParams;
+  }
+
+  public List<String> getCustomExecuteParamList() {
+    return this.customExecuteParams == null
+           ? new ArrayList<String>()
+           : Arrays.stream(this.customExecuteParams.split(" ")).filter((item) -> !item.isEmpty()).toList();
+  }
+
+  public void setCustomExecuteParams(String customExecuteParams) {
+    this.customExecuteParams = customExecuteParams;
   }
 
   public String getCustomRemoteUrl() {
