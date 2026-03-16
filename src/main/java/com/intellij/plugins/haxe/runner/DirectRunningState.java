@@ -25,16 +25,7 @@ import com.intellij.execution.filters.TextConsoleBuilderFactory;
 import com.intellij.execution.process.*;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.openapi.module.Module;
-import com.intellij.openapi.project.ProjectUtil;
-import com.intellij.openapi.projectRoots.Sdk;
-import com.intellij.openapi.roots.ModuleRootManager;
-import com.intellij.openapi.util.Key;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.plugins.haxe.HaxeCommonBundle;
-import com.intellij.plugins.haxe.config.sdk.HaxeSdkData;
-import com.intellij.plugins.haxe.ide.module.HaxeModuleSettings;
 import com.intellij.plugins.haxe.util.HaxeCommandLine;
-import com.intellij.util.text.StringTokenizer;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -95,6 +86,7 @@ public class DirectRunningState extends CommandLineState {
 
     commandLine.setWorkDirectory(config.getCustomWorkingDirectory());
     commandLine.setExePath(config.getCustomFileToLaunchPath());
+    commandLine.addParameter("/Log2VSC:True");
     commandLine.addParameters(config.getCustomExecuteParamList());
 
     final TextConsoleBuilder consoleBuilder = TextConsoleBuilderFactory.getInstance().createBuilder(module.getProject());
