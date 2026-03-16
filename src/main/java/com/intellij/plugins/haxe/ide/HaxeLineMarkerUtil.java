@@ -8,8 +8,8 @@ import com.intellij.plugins.haxe.HaxeBundle;
 import com.intellij.plugins.haxe.HaxeComponentType;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.model.HaxeFieldModel;
+import com.intellij.plugins.haxe.model.HaxeMemberModel;
 import com.intellij.plugins.haxe.model.HaxeMethodModel;
-import com.intellij.plugins.haxe.model.HaxeModel;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.containers.ContainerUtil;
@@ -29,51 +29,17 @@ public class HaxeLineMarkerUtil {
     @Nullable
     public static LineMarkerInfo<PsiElement> tryCreateMemberOverrideMarker(final HaxeNamedComponent namedComponent,
                                                                            List<HaxeNamedComponent> superItems) {
-        //TODO  support override of fields from interfaces
-        final @Nullable String findName;
-        final boolean overrides;
-        final PsiElement element;
-        if (namedComponent instanceof HaxeMethodDeclaration methodDeclaration) {
-            HaxeMethodModel model = methodDeclaration.getModel();
-            String methodName = model.getName();
+        final @Nullable String findName = getMemberMarkerName(namedComponent);
+        final @Nullable PsiElement element = getMarkerElement(namedComponent);
+        if (findName == null || element == null) return null;
 
-            // ignore constructors
-            if (model.getName().equals("new")) {
-                return null;
-            }
-          @Nullable HaxeFieldModel propModel = model.getDeclaredProp();
-          findName = propModel != null ? propModel.getName() : model.getName();
-          overrides = model.isOverride();
-          element = methodDeclaration.getComponentName().getIdentifier().getFirstChild();
-        }
-        else if (namedComponent instanceof HaxeFieldDeclaration propDeclaration) {
-          findName = propDeclaration.getName();
-          overrides = false;
-          element = propDeclaration.getComponentName().getIdentifier().getFirstChild();
-        }
-        else {
-          return null;
-        }
-
-        final List<HaxeNamedComponent> filteredSuperItems = ContainerUtil.filter(superItems, item -> componentNameMatches(item, methodName));
+        final List<HaxeNamedComponent> filteredSuperItems = ContainerUtil.filter(superItems, item -> componentNameMatches(item, findName));
         if (filteredSuperItems.isEmpty()) {
             return null;
         }
 
-        boolean fromInterface  = false;
-        boolean fromAbstract = false;
-        for (HaxeNamedComponent filteredSuperItem : filteredSuperItems) {
-          if (filteredSuperItem instanceof HaxeMethod) {
-            HaxeMethod method = (HaxeMethod) filteredSuperItem;
-            HaxeMethodModel superModel = method.getModel();
-            fromAbstract = superModel.isAbstract();
-            fromInterface = !superModel.isInInterface();
-            break;
-          }
-        }
-
-        final boolean overrides = model.isOverride();
-        final PsiElement element = methodDeclaration.getComponentName().getIdentifier().getFirstChild();
+        final boolean overrides = isOverrideDeclaration(namedComponent) || hasNonInterfaceSuperMember(filteredSuperItems);
+        final boolean fromAbstract = hasAbstractSuperMethod(filteredSuperItems);
         final Icon icon = overrides ? AllIcons.Gutter.OverridingMethod : AllIcons.Gutter.ImplementingMethod;
         Supplier<String> accessibleNameProvider = () -> overrides ? "Overriding Method" : "Implementing Method";
 
@@ -116,64 +82,44 @@ public class HaxeLineMarkerUtil {
     public static LineMarkerInfo<PsiElement> tryCreateMemberImplementationMarker(final HaxeNamedComponent namedComponent,
                                                                                  List<HaxeNamedComponent> subItems,
                                                                                  final boolean isInterface) {
+        final @Nullable String findName = getMemberMarkerName(namedComponent);
+        final @Nullable PsiElement element = getMarkerElement(namedComponent);
+        if (findName == null || element == null) return null;
 
-        //TODO  support override of fields from interfaces
-        @Nullable String findName = null;
-        if (namedComponent instanceof HaxeMethodDeclaration methodDeclaration) {
-            HaxeMethodModel model = methodDeclaration.getModel();
-            findName = model.getName();
-
-            // ignore constructors
-            if (findName.equals("new")) {
-                findName = null;
-            }
-        }
-        else if (namedComponent instanceof HaxeFieldDeclaration fieldDeclaration && fieldDeclaration.getPropertyDeclaration() != null) {
-            HaxeModel model = fieldDeclaration.getModel();
-            findName = model.getName();
+        final List<HaxeNamedComponent> filteredSubItems = ContainerUtil.filter(subItems, item -> componentNameMatches(item, findName));
+        if (filteredSubItems.isEmpty()) {
+            return null;
         }
 
-        if (findName != null) {
-            @Nullable String finalElementName = findName;
-            final List<HaxeNamedComponent> filteredSubItems = ContainerUtil.filter(subItems, item -> componentNameMatches(item,
-                                                                                                                          finalElementName));
-            if (filteredSubItems.isEmpty()) {
-                return null;
+        int componentCount = filteredSubItems.size();
+        Supplier<String> accessibleNameProvider = () -> isInterface ? "Implemented Method" : "Overriden Method";
+
+        HaxeLineMarkerMemberNavigator haxeLineMarkerMemberNavigator = new HaxeLineMarkerMemberNavigator(HaxeComponentType.METHOD, findName, false, true, isInterface) {
+
+            @Override
+            protected @NotNull String getTabTitle() {
+                return "Implementations of " + componentName; // TODO bundle
             }
 
-            int componentCount = filteredSubItems.size();
-            final PsiElement element = namedComponent.getComponentName().getIdentifier().getFirstChild();
-            Supplier<String> accessibleNameProvider = () -> isInterface ? "Implemented Method" : "Overriden Method";
+            @Override
+            protected @Nls @NotNull String getPopupTitle(int itemCount) {
+                return isInterface ?
+                       DaemonBundle.message("navigation.title.implementation.method", componentName, componentCount) :
+                       DaemonBundle.message("navigation.title.overrider.method", componentName, componentCount);
+            }
+        };
 
-            HaxeLineMarkerMemberNavigator haxeLineMarkerMemberNavigator = new HaxeLineMarkerMemberNavigator(HaxeComponentType.METHOD, findName, false, true, isInterface) {
-
-                @Override
-                protected @NotNull String getTabTitle() {
-                    return "Implementations of " + componentName; // TODO bundle
-                }
-
-                @Override
-                protected @Nls @NotNull String getPopupTitle(int itemCount) {
-                    return isInterface ?
-                           DaemonBundle.message("navigation.title.implementation.method", componentName, componentCount) :
-                           DaemonBundle.message("navigation.title.overrider.method", componentName, componentCount);
-                }
-            };
-
-            return new LineMarkerInfo<>(
-              element,
-              element.getTextRange(),
-              isInterface ? AllIcons.Gutter.ImplementedMethod : AllIcons.Gutter.OverridenMethod,
-              element1 -> isInterface
-                          ? DaemonBundle.message("method.is.implemented.too.many")
-                          : DaemonBundle.message("method.is.overridden.too.many"),
-              haxeLineMarkerMemberNavigator,
-              GutterIconRenderer.Alignment.RIGHT,
-              accessibleNameProvider
-            );
-        }
-
-        return null;
+        return new LineMarkerInfo<>(
+          element,
+          element.getTextRange(),
+          isInterface ? AllIcons.Gutter.ImplementedMethod : AllIcons.Gutter.OverridenMethod,
+          element1 -> isInterface
+                      ? DaemonBundle.message("method.is.implemented.too.many")
+                      : DaemonBundle.message("method.is.overridden.too.many"),
+          haxeLineMarkerMemberNavigator,
+          GutterIconRenderer.Alignment.RIGHT,
+          accessibleNameProvider
+        );
     }
 
 
@@ -255,5 +201,57 @@ public class HaxeLineMarkerUtil {
     public static boolean componentNameMatches(@NotNull HaxeNamedComponent haxeNamedComponent, @NotNull String componentName) {
         HaxeComponentName psi = haxeNamedComponent.getComponentName();
         return psi != null && psi.textMatches(componentName);
+    }
+
+    private static @Nullable String getMemberMarkerName(@NotNull HaxeNamedComponent namedComponent) {
+        if (namedComponent instanceof HaxeMethodDeclaration methodDeclaration) {
+            HaxeMethodModel model = methodDeclaration.getModel();
+            if ("new".equals(model.getName())) {
+                return null;
+            }
+
+            HaxeFieldModel declaredProperty = model.getDeclaredProp();
+            return declaredProperty != null ? declaredProperty.getName() : model.getName();
+        }
+
+        if (namedComponent instanceof HaxeFieldDeclaration fieldDeclaration && fieldDeclaration.getPropertyDeclaration() != null) {
+            return fieldDeclaration.getName();
+        }
+
+        return null;
+    }
+
+    private static @Nullable PsiElement getMarkerElement(@NotNull HaxeNamedComponent namedComponent) {
+        HaxeComponentName componentName = namedComponent.getComponentName();
+        if (componentName == null || componentName.getIdentifier() == null) {
+            return null;
+        }
+        return componentName.getIdentifier().getFirstChild();
+    }
+
+    private static boolean isOverrideDeclaration(@NotNull HaxeNamedComponent namedComponent) {
+        if (namedComponent instanceof HaxeMethodDeclaration methodDeclaration) {
+            return methodDeclaration.getModel().isOverride();
+        }
+        return false;
+    }
+
+    private static boolean hasNonInterfaceSuperMember(@NotNull List<HaxeNamedComponent> superItems) {
+        for (HaxeNamedComponent superItem : superItems) {
+            HaxeMemberModel model = HaxeMemberModel.fromPsi(superItem);
+            if (model != null && !model.isInInterface()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasAbstractSuperMethod(@NotNull List<HaxeNamedComponent> superItems) {
+        for (HaxeNamedComponent superItem : superItems) {
+            if (superItem instanceof HaxeMethod method && method.getModel().isAbstract()) {
+                return true;
+            }
+        }
+        return false;
     }
 }

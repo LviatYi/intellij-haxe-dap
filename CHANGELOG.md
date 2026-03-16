@@ -3,6 +3,7 @@
 ## Unreleased
 
 * Changed: Additional type support has been added to breadcrumbs.
+* Changed: `HaxeLineMarkerMemberNavigator` and `HaxeLineMarkerProviderNS` now support recursive subclasses resolving.
 
 ## 2.0.9(1.6.7)
 

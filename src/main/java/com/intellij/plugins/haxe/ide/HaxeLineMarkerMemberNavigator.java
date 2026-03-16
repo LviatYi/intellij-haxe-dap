@@ -89,7 +89,7 @@ abstract class HaxeLineMarkerMemberNavigator implements GutterIconNavigationHand
 
     @NotNull
     private static List<HaxeNamedComponent> findRelatedSubComponents(HaxeClass haxeClass, String componentName) {
-        final Collection<HaxeClass> subClasses = HaxeInheritanceDefinitionsUtil.getItemsByQNameFirstLevelChildrenOnly(haxeClass);
+        final Collection<HaxeClass> subClasses = HaxeInheritanceDefinitionsUtil.getItemsByQNameIncludingSubChildren(haxeClass);
 
         return subClasses.stream()
                 .map(HaxeNamedSubComponentUtil::getNamedSubComponentsFromClassType)
