@@ -1,5 +1,6 @@
 package com.intellij.plugins.haxe.ide.folding;
 
+import com.intellij.ide.ui.UISettings;
 import com.intellij.lang.Language;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.plugins.haxe.HaxeComponentType;
@@ -100,5 +101,9 @@ public class HaxeBreadcrumbsProvider implements BreadcrumbsProvider {
     if (element instanceof HaxeFile) return HaxeIcons.HAXE_LOGO;
     HaxeComponentType componentType = HaxeComponentType.typeOf(element);
     return componentType == null ? null : componentType.getIcon();
+  }
+
+  public boolean isShownByDefault() {
+    return !UISettings.getInstance().getShowMembersInNavigationBar();
   }
 }
