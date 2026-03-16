@@ -65,6 +65,7 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
 
 
   private Boolean _isPrivate = null;
+  private Boolean _isExtern = null;
 
   static {
     log.info("Loaded AbstractHaxePsiClass");
@@ -82,6 +83,16 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
 
   @Override
   public String getQualifiedName() {
+    return getQualifiedName(false);
+  }
+
+  // includes both module name and class name even if they are the same
+  @Override
+  public String getFullyQualifiedName() {
+    return getQualifiedName(true);
+  }
+
+  public String getQualifiedName(boolean alwaysIncludeModuleName) {
     String name = getName();
     if (getParent() == null) {
       return name == null ? "" : name;
@@ -101,12 +112,13 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     final String fileName = FileUtil.getNameWithoutExtension(file.getName());
     String packageName = HaxeResolveUtil.getPackageName(file);
 
-    if (name != null && isAncillaryClass(packageName, name, fileName)) {
+    if ( alwaysIncludeModuleName || (name != null && isAncillaryClass(packageName, name, fileName))) {
       packageName = HaxeResolveUtil.joinQName(packageName, fileName);
     }
 
     return HaxeResolveUtil.joinQName(packageName, name);
   }
+
 
   private HaxeClassModel _model = null;
 
@@ -157,10 +169,6 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     return HaxeResolveUtil.findComponentDeclaration(getContainingFile(), name) != null;
   }
 
-  @Override
-  public boolean isExtern() {
-    return (this instanceof HaxeExternClassDeclaration || this instanceof HaxeExternInterfaceDeclaration);
-  }
 
   @Override
   public boolean isAbstractType() {
@@ -261,16 +269,17 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
 
 
   @Override
-  public HaxeNamedComponent findHaxeMethodByName(@NotNull final String name, @Nullable HaxeGenericResolver resolver) {
+  public List<HaxeNamedComponent> findHaxeMethodByName(@NotNull final String name, @Nullable HaxeGenericResolver resolver) {
     List<HaxeMethod> all = getHaxeMethodsAll(HaxeComponentType.INTERFACE);
-    return ContainerUtil.find(all, (Condition<HaxeNamedComponent>)component -> name.equals(component.getName()));
+    return ContainerUtil.findAll(all, component -> name.equals(component.getName()));
   }
+
 
   /** Optimized path to replace findHaxeMethod and findHaxeField when used together. */
   @Override
-  public HaxeNamedComponent findHaxeMemberByName(@NotNull final String name, @Nullable HaxeGenericResolver resolver) {
+  public List<HaxeNamedComponent> findHaxeMemberByName(@NotNull final String name, @Nullable HaxeGenericResolver resolver) {
     List<HaxeNamedComponent> namedSubComponents = HaxeNamedSubComponentUtil.getAllNamedSubComponentsInType(this, resolver);
-    return ContainerUtil.find(namedSubComponents, component -> {
+    return ContainerUtil.findAll(namedSubComponents, component -> {
       HaxeComponentType type = component.getComponentType();
       return ((type == HaxeComponentType.FIELD || type == HaxeComponentType.METHOD) && name.equals(component.getName()));
     });
@@ -291,7 +300,8 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     });
     // Maybe old style getter?
     if (null == accessor) {
-      accessor = findHaxeMethodByName("__get", resolver);
+      List<HaxeNamedComponent> methods = findHaxeMethodByName("__get", resolver);
+      accessor = methods.isEmpty() ? null : methods.getFirst();
     }
     // maybe ArrayAccess interface for externs (see hackish workaround where findArrayAccessGetter is used)
     if (null == accessor) {
@@ -320,7 +330,8 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     });
     // Maybe old style getter?
     if (null == accessor) {
-      accessor = findHaxeMethodByName("__set", resolver);
+      List<HaxeNamedComponent> methods = findHaxeMethodByName("__set", resolver);
+      accessor = methods.isEmpty() ? null : methods.getFirst();
     }
     // maybe ArrayAccess interface for externs (see hackish workaround where findArrayAccessGetter is used)
     if (null == accessor) {
@@ -674,6 +685,26 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
     }
     return _isPrivate;
   }
+  @Override
+  public boolean isExtern() {
+    if(_isExtern == null) {
+      HaxeExternKeyWord privateKeyWord = null;
+      if (this instanceof HaxeExternClassDeclaration) { // concrete class
+        _isExtern = true;
+        return _isExtern;
+      } else if (this instanceof HaxeExternInterfaceDeclaration declaration) { // concrete class
+        privateKeyWord = declaration.getExternKeyWord();
+      } else if (this instanceof HaxeAbstractTypeDeclaration declaration) { // abstract
+        privateKeyWord = declaration.getExternKeyWord();
+      } else if (this instanceof HaxeTypedefDeclaration declaration) { // typedef
+        privateKeyWord = declaration.getExternKeyWord();
+      } else if (this instanceof HaxeEnumDeclaration declaration) { // enum
+        privateKeyWord = declaration.getExternKeyWord();
+      }
+      _isExtern =  (privateKeyWord != null);
+    }
+    return _isExtern;
+  }
 
   private HaxePrivateKeyWord getPrivateKeyWord(HaxeClassModifierList list) {
     if (null != list) {
@@ -752,6 +783,21 @@ public abstract class AbstractHaxePsiClass extends AbstractHaxeNamedComponent im
   @NotNull
   public Collection<HierarchicalMethodSignature> getVisibleSignatures() {
     return PsiSuperMethodImplUtil.getVisibleSignatures(this);
+  }
+
+  @Override
+  public HaxeModule getModule() {
+    return PsiTreeUtil.getChildOfType(getContainingFile(), HaxeModule.class);
+  }
+
+  @Override
+  public PsiPackage getPackage() {
+    HaxePackageStatement childOfType = PsiTreeUtil.getChildOfType(getContainingFile(), HaxePackageStatement.class);
+    if(childOfType!= null) {
+      HaxeReferenceExpression reference = childOfType.getReferenceExpression();
+      if(reference!= null && reference.resolve() instanceof PsiPackage aPackage) return aPackage;
+    }
+    return null;
   }
 
   @Override

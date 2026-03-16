@@ -92,7 +92,8 @@ public class PullUpProcessor extends BaseRefactoringProcessor implements PullUpD
     for (MemberInfo memberInfo : myMembersToMove) {
       final PsiMember member = memberInfo.getMember();
       if (member.hasModifierProperty(PsiModifier.STATIC)) {
-        for (PsiReference reference : ReferencesSearch.search(member)) {
+        Collection<PsiReference> references = ReferencesSearch.search(member).findAll();
+        for (PsiReference reference : references) {
           result.add(new UsageInfo(reference));
         }
       }
@@ -155,7 +156,7 @@ public class PullUpProcessor extends BaseRefactoringProcessor implements PullUpD
           @Override
           public void run() {
             if (!myTargetSuperClass.isValid()) return;
-            final Query<PsiClass> search = ClassInheritorsSearch.search(myTargetSuperClass);
+            final Collection<PsiClass> search = ClassInheritorsSearch.search(myTargetSuperClass).findAll();
             final Set<VirtualFile> hierarchyFiles = new HashSet<VirtualFile>();
             for (PsiClass aClass : search) {
               final PsiFile containingFile = aClass.getContainingFile();

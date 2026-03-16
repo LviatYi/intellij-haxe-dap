@@ -45,8 +45,10 @@
   </extensions>>
 
   <extensions defaultExtensionNs="com.intellij">
+
     <iconMapper mappingFile="HaxeIconMappings.json"/>
-    <compileServer.plugin  classpath="jps-plugin.jar;common.jar"/>
+      <!-- NOTE: Looks like intellij-platform-gradle-plugin 2.7.0 prefixes all extra jars with rootProject.name-->
+      <compileServer.plugin  id="haxe" classpath="Haxe-plugin.jps-plugin.jar;Haxe-plugin.common.jar"/>
     <testFinder implementation="com.intellij.plugins.haxe.ide.HaxeTestFinder"/>
 
     <iconProvider implementation="com.intellij.plugins.haxe.ide.HaxeIconProvider"/>
@@ -66,6 +68,8 @@
     <projectImportBuilder implementation="com.intellij.plugins.haxe.ide.projectStructure.HaxeProjectImportBuilder"/>
     <sdkFinder implementation="com.intellij.plugins.haxe.haxelib.HaxeSdkFinder"/>
     <library.type implementation="com.intellij.plugins.haxe.ide.library.HaxeLibraryType"/>
+
+    <copyPastePostProcessor implementation="com.intellij.plugins.haxe.ide.actions.editor.copypaste.HaxeCopyPasteReferenceProcessor"/>
 
     <externalIconProvider implementationClass="com.intellij.plugins.haxe.ide.projectStructure.autoimport.HaxelibIconProvider"  key="Haxelib"/>
 
@@ -147,7 +151,13 @@
     <lang.findUsagesProvider language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeFindUsagesProvider"/>
     <lang.implementationTextSelectioner language="Haxe"
                                         implementationClass="com.intellij.plugins.haxe.ide.HaxeImplementationTextSelectioner"/>
-    <lang.documentationProvider language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeDocumentationProvider"/>
+
+<!--    TODO migrate to psiTargetProvider /  linkHandler etc-->
+    <lang.documentationProvider language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.documentation.providers.HaxeDocumentationProvider"/>
+
+    <platform.backend.documentation.targetProvider  implementation="com.intellij.plugins.haxe.ide.documentation.providers.HaxeMetadataDocumentationProvider"/>
+    <platform.backend.documentation.lookupElementTargetProvider implementation="com.intellij.plugins.haxe.ide.documentation.providers.HaxeLookupElementDocumentationProvider"/>
+
     <lang.commenter language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeCommenter"/>
     <lang.psiStructureViewFactory language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.structure.HaxeStructureViewFactory"/>
     <lang.surroundDescriptor language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.surroundWith.HaxeSurroundDescriptor"/>
@@ -169,6 +179,9 @@
          pre-existing renamers will take over if they are found first, and our extensions won't be used. -->
     <renamePsiElementProcessor order="first" implementation="com.intellij.plugins.haxe.ide.refactoring.rename.HaxeRenameProcessor"/>
     <!-- =============================================================================================== -->
+
+    <statementUpDownMover implementation="com.intellij.plugins.haxe.ide.refactoring.move.HaxeMoveDeclarationHandler" id="HaxeMoveDeclaration"/>
+    <statementUpDownMover implementation="com.intellij.plugins.haxe.ide.refactoring.move.HaxeMoveStatementHandler" id="HaxeMoveStatement" order="after HaxeMoveDeclaration"/>
 
     <codeInsight.lineMarkerProvider language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeLineMarkerProvider"/>
     <codeInsight.gotoSuper language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeGotoSuperHandler"/>
@@ -247,13 +260,14 @@
 
     <codeFoldingOptionsProvider instance="com.intellij.plugins.haxe.ide.folding.HaxeFoldingOptionsProvider"/>
     <applicationService serviceImplementation="com.intellij.plugins.haxe.ide.folding.HaxeFoldingSettings"/>
-    <breadcrumbsInfoProvider implementation="com.intellij.plugins.haxe.ide.folding.HaxeBreadcrumbsProvider"/>
 
     <additionalTextAttributes scheme="Default" file="colorSchemes/HaxeDefault.xml"/>
     <additionalTextAttributes scheme="Darcula" file="colorSchemes/HaxeDarcula.xml"/>
 
     <codeStyleSettingsProvider implementation="com.intellij.plugins.haxe.ide.formatter.settings.HaxeCodeStyleSettingsProvider"/>
     <langCodeStyleSettingsProvider implementation="com.intellij.plugins.haxe.ide.formatter.settings.HaxeLanguageCodeStyleSettingsProvider"/>
+
+    <breadcrumbsInfoProvider implementation="com.intellij.plugins.haxe.ide.editor.HaxeBreadcrumbsInfoProvider" id="Haxe"/>
 
     <quoteHandler fileType="Haxe" className="com.intellij.plugins.haxe.ide.HaxeQuoteHandler"/>
 
@@ -271,7 +285,7 @@
     <completion.contributor language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.completion.HaxeClassNameCompletionContributor"/>
     <completion.contributor language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeSmartCompletionContributor"/>
     <completion.contributor language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.completion.HaxeMacroCompletionContributor"/>
-    <completion.contributor language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.completion.HaxeMetaTagsCompletionContributor"/>
+    <completion.contributor language="HaxeMetadata" implementationClass="com.intellij.plugins.haxe.ide.completion.HaxeMetaTagsCompletionContributor" order="FIRST"/>
     <completion.contributor language="HXML" implementationClass="com.intellij.plugins.haxe.ide.HXMLCompilerArgumentsCompletionContributor"/>
     <completion.contributor language="HXML" implementationClass="com.intellij.plugins.haxe.ide.HXMLHaxelibCompletionContributor"/>
     <completion.contributor language="HXML" implementationClass="com.intellij.plugins.haxe.ide.HXMLDefineCompletionContributor"/>
@@ -315,7 +329,7 @@
     <projectService serviceImplementation="com.intellij.plugins.haxe.config.HaxeProjectSettings"/>
     <projectService serviceImplementation="com.intellij.plugins.haxe.lang.psi.HaxeClassResolveCache"/>
 
-    <projectService serviceImplementation="com.intellij.plugins.haxe.ide.HaxeDocumentationRenderer"/>
+    <projectService serviceImplementation="com.intellij.plugins.haxe.ide.documentation.HaxeDocumentationRenderer"/>
 
     <projectService serviceImplementation="com.intellij.plugins.haxe.haxelib.HaxelibModuleManagerService"/>
 
@@ -354,6 +368,8 @@
     <annotator language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.annotator.semantics.HaxeUnaryExpressionAnnotator"/>
     <annotator language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.annotator.semantics.HaxeDefaultTypeParameterAnnotator"/>
     <annotator language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.annotator.semantics.HaxeNullCoalescingAnnotator"/>
+    <annotator language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.annotator.semantics.HaxeAccessAnnotator"/>
+    <annotator language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.annotator.semantics.HaxeReturnStatementAnnotator"/>
 
     <annotator language="Haxe" id="body" implementationClass="com.intellij.plugins.haxe.ide.annotator.semantics.HaxeMethodBodyAnnotator" order="last"/>
 
@@ -383,10 +399,25 @@
                      groupKey="inspections.group.name" enabledByDefault="true"
                      implementationClass="com.intellij.plugins.haxe.ide.inspections.HaxeUnusedImportInspection"/>
 
-    <localInspection language="Haxe" shortName="HaxeUnusedVar" bundle="messages.HaxeBundle"
+    <localInspection language="Haxe" shortName="HaxeUnusedVariable" bundle="messages.HaxeBundle"
                      key="haxe.inspections.unused.var.name"
                      groupKey="inspections.group.name" enabledByDefault="true"
-                     implementationClass="com.intellij.plugins.haxe.ide.inspections.HaxeUnusedVarInspection"/>
+                     implementationClass="com.intellij.plugins.haxe.ide.inspections.HaxeUnusedLocalVarInspection"/>
+
+    <localInspection language="Haxe" shortName="HaxeUnusedField" bundle="messages.HaxeBundle"
+                     key="haxe.inspections.unused.field.name"
+                     groupKey="inspections.group.name" enabledByDefault="true"
+                     implementationClass="com.intellij.plugins.haxe.ide.inspections.HaxeUnusedFieldInspection"/>
+
+    <localInspection language="Haxe" shortName="HaxeUnusedMethod" bundle="messages.HaxeBundle"
+                     key="haxe.inspections.unused.method.name"
+                     groupKey="inspections.group.name" enabledByDefault="true"
+                     implementationClass="com.intellij.plugins.haxe.ide.inspections.HaxeUnusedMethodInspection"/>
+
+    <localInspection language="Haxe" shortName="HaxeUnusedFunction" bundle="messages.HaxeBundle"
+                     key="haxe.inspections.unused.function.name"
+                     groupKey="inspections.group.name" enabledByDefault="true"
+                     implementationClass="com.intellij.plugins.haxe.ide.inspections.HaxeUnusedFunctionInspection"/>
 
     <localInspection language="Haxe" shortName="HaxeUnresolvedSymbol" bundle="messages.HaxeBundle"
                      key="haxe.inspection.unresolved.symbol"
@@ -409,6 +440,8 @@
     <hierarchy.referenceProcessor implementation="com.intellij.plugins.haxe.ide.hierarchy.call.HaxeCallReferenceProcessor"/>
 
     <plugins.haxe.haxeMethodsSearch implementation="com.intellij.psi.impl.search.JavaOverridingMethodsSearcher"/>
+
+    <consoleFilterProvider implementation="com.intellij.plugins.haxe.execution.console.HaxeConsoleFilterProvider"/>
 
     <intentionAction>
       <language>Haxe</language>
@@ -492,7 +525,8 @@
                 factoryClass="com.intellij.plugins.haxe.ide.toolWindow.HaxelibConsoleWindowFactory"/>
 
     <readWriteAccessDetector implementation="com.intellij.plugins.haxe.ide.HaxeReadWriteAccessDetector"
-                             order="first, before java, before kotlin"/>
+                             id="haxe"
+                             order="first, before kotlin, before java"/>
 
     <postStartupActivity implementation="com.intellij.plugins.haxe.haxelib.HaxelibProjectStartActivity"/>
 
@@ -572,8 +606,8 @@
 
 
     <group id="Haxe.projectUtils" icon="HaxeIcons.HAXE_LOGO" popup="true"  text="Haxe" class="com.intellij.plugins.haxe.ide.actions.haxelib.HaxeActionGroup">
-      <reference id="Haxe.project.sync-libs"/>
-      <reference id="Haxe.haxlib.update-cache"/>
+      <reference ref="Haxe.project.sync-libs"/>
+      <reference ref="Haxe.haxlib.update-cache"/>
       <add-to-group group-id="ProjectViewPopupMenu"/>
       <add-to-group group-id="EditorPopupMenu"/>
     </group>

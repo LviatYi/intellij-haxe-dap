@@ -4,8 +4,8 @@ import com.intellij.plugins.haxe.HaxeComponentType;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.model.type.HaxeGenericResolver;
 import com.intellij.plugins.haxe.util.HaxeNamedSubComponentUtil;
-import com.intellij.plugins.haxe.util.HaxeResolveUtil;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiMember;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.containers.ContainerUtil;
@@ -53,7 +53,26 @@ public class HaxeModuleModel implements HaxeCommonMembersModel {
 
   @Override
   public String getName() {
-    HaxePackageStatement type = PsiTreeUtil.getParentOfType(module, HaxePackageStatement.class);
+    return getShortName();
+  }
+
+  public String getShortName() {
+    PsiFile containingFile = module.getContainingFile();
+    String fileName = containingFile.getName();
+    if(fileName.endsWith(".hx")) {
+      fileName = fileName.substring(0, fileName.length() -3);
+    }
+    return fileName;
+  }
+
+  public String getQName() {
+    String packageName = getPackageName();
+    if(packageName.isEmpty()) return  getName();
+    return packageName + "." + getName();
+  }
+
+  public String getPackageName() {
+    HaxePackageStatement type = PsiTreeUtil.getChildOfType(module.getContainingFile(), HaxePackageStatement.class);
     if (type == null) return ""; // no package statement is either an error or just root/default
     return type.getPackageName();
   }
@@ -75,7 +94,7 @@ public class HaxeModuleModel implements HaxeCommonMembersModel {
       if (exhibitor != null) {
         FullyQualifiedInfo containerInfo = exhibitor.getQualifiedInfo();
         if (containerInfo != null) {
-          myQualifiedInfo = new FullyQualifiedInfo(containerInfo.packagePath, containerInfo.fileName, null, null);
+          myQualifiedInfo = new FullyQualifiedInfo(containerInfo.packagePath, containerInfo.moduleName, null, null);
         }
       }
     }

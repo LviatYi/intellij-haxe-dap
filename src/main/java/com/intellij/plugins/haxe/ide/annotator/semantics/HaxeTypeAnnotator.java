@@ -19,6 +19,7 @@ import java.util.List;
 
 import static com.intellij.plugins.haxe.ide.annotator.HaxeSemanticAnnotatorInspections.INVALID_TYPE_NAME;
 import static com.intellij.plugins.haxe.lang.psi.HaxePsiModifier.DYNAMIC;
+import static java.util.function.Predicate.not;
 
 public class HaxeTypeAnnotator implements Annotator {
 
@@ -64,11 +65,12 @@ public class HaxeTypeAnnotator implements Annotator {
       }
     }
     else if (context.getParent() instanceof HaxeTypeTag) {
-      if (context.getParent().getParent() instanceof HaxeParameter) {
-        // if HaxeType is part of a method parameter then  type specifics are possibly inherited
-        //  this check is currently only checking assignment to variables and arguments when calling methods
-        return;
-      }
+      //TODO MLO: Might not be necessary anymore ? (make test if this is actually necessary)
+//      if (context.getParent().getParent() instanceof HaxeParameter) {
+//        // if HaxeType is part of a method parameter then  type specifics are possibly inherited
+//        //  this check is currently only checking assignment to variables and arguments when calling methods
+//        return;
+//      }
       checkTypeParametersForType(type, holder);
     }
   }
@@ -101,6 +103,8 @@ public class HaxeTypeAnnotator implements Annotator {
         }
         if (typeParameterCount > classParameterCountMax) {
           if (typeName.startsWith("$"))return; // ignore when type is from macro variable
+            HaxeClassModel haxeClassModel = haxeClassReference.getHaxeClassModel();
+            if(haxeClassModel != null && haxeClassModel.isGenericBuildWithRestTypeParam()) return;
           holder.newAnnotation(HighlightSeverity.ERROR,
                                HaxeBundle.message("haxe.inspections.parameter.count.mismatch.description", typeName, classParameterCountMax, typeParameterCount))
             .range(type)
@@ -113,9 +117,15 @@ public class HaxeTypeAnnotator implements Annotator {
 
   static private int minTypeParameters(HaxeClass haxeClass) {
     List<HaxeGenericParamModel> params = haxeClass.getModel().getGenericParams();
-    boolean allHasDefaults = params.stream().allMatch(HaxeGenericParamModel::hasDefault);
-    if (allHasDefaults) return 0;
-    return params.size();
+      int required = 0;
+      for (int i = 0; i < params.size(); i++) {
+          HaxeGenericParamModel param = params.get(i);
+          if (!param.hasDefault()) {
+              // all typeParameters including those with default values are required if one or more typeParameter without a default comes after it
+              required = i+1;
+          }
+      }
+      return required;
   }
   static private int maxTypeParameters(HaxeClass haxeClass) {
     return haxeClass.getModel().getGenericParams().size();

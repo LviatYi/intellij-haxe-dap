@@ -19,6 +19,8 @@
  */
 package com.intellij.plugins.haxe.model;
 
+import com.intellij.openapi.util.RecursionGuard;
+import com.intellij.openapi.util.RecursionManager;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.lang.psi.impl.AbstractHaxePsiClass;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxeObjectLiteralImpl;
@@ -72,6 +74,10 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   public HaxeClassReference getReference() {
     return new HaxeClassReference(this, this.getPsi());
   }
+  @NotNull
+  public HaxeClassReference createReference(PsiElement context) {
+    return new HaxeClassReference(this, context);
+  }
 
   @NotNull
   public ResultHolder getInstanceType() {
@@ -82,6 +88,10 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
         reference = SpecificHaxeClassReference.withGenerics(getReference(),getSpecifics());
     }
     return reference;
+  }
+  @NotNull
+  public SpecificHaxeClassReference createSpecificReference(PsiElement context) {
+        return SpecificHaxeClassReference.withGenerics(createReference(context),getSpecifics());
   }
 
   private boolean isInstanceReferenceValid() {
@@ -161,6 +171,28 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   public boolean isCallable() {
     return haxeClass.hasCompileTimeMeta(HaxeMeta.CALLABLE);
   }
+
+    public boolean isGenericBuild() {
+        return haxeClass.hasCompileTimeMeta(HaxeMeta.GENERIC_BUILD);
+    }
+
+    // @:genericBuild macro supports "rest"/vararg typeParameters, so we ignore typeParameters mismatch.
+    // https://haxe.org/manual/macro-generic-build.html
+    // https://gist.github.com/nadako/b086569b9fffb759a1b5
+    public boolean isGenericBuildWithRestTypeParam() {
+      if(reference == null) return false;
+        HaxeClassModel haxeClassModel = reference.getHaxeClassModel();
+        if(haxeClassModel != null && haxeClassModel.isGenericBuild()) {
+            List<HaxeGenericParamModel> genericParams = haxeClassModel.getGenericParams();
+            if (!genericParams.isEmpty()) {
+                HaxeGenericParamModel last = genericParams.getLast();
+                String name = last.haxeClass.getName();
+                return name != null && name.equals("Rest");
+            }
+        }
+        return false;
+    }
+
 
   @Nullable
   public HaxeModifiersModel getModifiers() {
@@ -401,6 +433,25 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   public HaxeMethodModel getConstructor(@Nullable HaxeGenericResolver resolver) {
     return getMethod("new", resolver);
   }
+  public List<HaxeMethodModel> getConstructors(@Nullable HaxeGenericResolver resolver) {
+      List<HaxeMethodModel> normalConstructors = getMethods(resolver).stream()
+            .filter(HaxeMethodModel::isConstructor)
+            .toList();
+
+      List<HaxeMethodModel> constructors = new ArrayList<>(normalConstructors);
+
+    for (HaxeMethodModel constructor : normalConstructors) {
+      HaxeMethod method = constructor.getMethod();
+      if (method.hasCompileTimeMetadata(HaxeMetadataCompileTimeMeta.OVERLOAD)) {
+        List<HaxeMethodModel> overloadConstructors = method.getModel().extractOverloadsForMethod().stream()
+                .map(HaxeMethodPsiMixin::getModel)
+                .toList();
+
+        constructors.addAll(overloadConstructors);
+      }
+    }
+    return constructors;
+  }
 
   public boolean hasConstructor(@Nullable HaxeGenericResolver resolver) {
     return getConstructor(resolver) != null;
@@ -421,19 +472,29 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   @Nullable
   public HaxeBaseMemberModel getMember(String name, @Nullable HaxeGenericResolver resolver) {
     if (name == null) return null;
-    HaxeNamedComponent component = haxeClass.findHaxeMemberByName(name, resolver);
-    if (component != null) {
+    List<HaxeNamedComponent> members = haxeClass.findHaxeMemberByName(name, resolver);
+    if (!members.isEmpty()) {
+      HaxeNamedComponent component = members.getFirst();
       return HaxeMemberModel.fromPsi(component);
     }
     return null;
   }
 
+  @NotNull
+  public List<HaxeBaseMemberModel> getMembers(String name, @Nullable HaxeGenericResolver resolver) {
+    if (name == null) return List.of();
+    List<HaxeNamedComponent> members = haxeClass.findHaxeMemberByName(name, resolver);
+    return members.stream().map(HaxeBaseMemberModel::fromPsi).toList();
+  }
+
+  @NotNull
   public List<HaxeBaseMemberModel> getMembers(@Nullable HaxeGenericResolver resolver) {
     final List<HaxeBaseMemberModel> members = new ArrayList<>();
     members.addAll(getMethods(resolver));
     members.addAll(getFields());
     return members;
   }
+  @NotNull
   public List<HaxeBaseMemberModel> getAllMembers(@Nullable HaxeGenericResolver resolver) {
     final List<HaxeBaseMemberModel> members = new ArrayList<>();
     members.addAll(getAllMethods(resolver));
@@ -479,8 +540,9 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
   }
 
   public HaxeMethodModel getMethod(String name, @Nullable HaxeGenericResolver resolver) {
-    HaxeMethodPsiMixin method = (HaxeMethodPsiMixin)haxeClass.findHaxeMethodByName(name, resolver);
-    return method != null ? method.getModel() : null;
+    List<HaxeNamedComponent> methods = haxeClass.findHaxeMethodByName(name, resolver);
+    if(!methods.isEmpty()  && methods.getFirst() instanceof HaxeMethodPsiMixin method) return method.getModel();
+    return null;
   }
 
   public List<HaxeMethodModel> getMethods(@Nullable HaxeGenericResolver resolver) {
@@ -588,7 +650,7 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
       if (exhibitor != null) {
         FullyQualifiedInfo containerInfo = exhibitor.getQualifiedInfo();
         if (containerInfo != null) {
-          return new FullyQualifiedInfo(containerInfo.packagePath, containerInfo.fileName, getName(), null);
+          return new FullyQualifiedInfo(containerInfo.packagePath, containerInfo.moduleName, getName(), null);
         }
       }
     return null;
@@ -711,6 +773,7 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
 
   private static HaxeGenericParam getGenericParamPsiCached(@NotNull HaxeClass haxeClass) {
     boolean isAnonymous = haxeClass instanceof HaxeAnonymousType;
+    //TODO Should probably rewrite so that changes in parent will invalidate cache
     HaxeGenericParam param = isAnonymous ? getGenericParamFromParent(haxeClass) : haxeClass.getGenericParam();
     return  param;
   }
@@ -859,9 +922,10 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
     // TODO ClassModel concept should be reviewed. We need to separate logic of abstracts, regular classes, enums, etc. Right now this class a bunch of if-else conditions. It looks dirty.
     ArrayList<HaxeModel> out = new ArrayList<>();
     if (isClass()) {
-      HaxeClassBody body = UsefulPsiTreeUtil.getChild(haxeClass, HaxeClassBody.class);
+      PsiElement body = getBodyPsi();
       if (body != null) {
-        for (HaxeNamedComponent declaration : PsiTreeUtil.getChildrenOfAnyType(body, HaxeFieldDeclaration.class, HaxeMethod.class)) {
+        List<? extends HaxeNamedComponent> children = PsiTreeUtil.getChildrenOfAnyType(body, HaxeFieldDeclaration.class, HaxeMethod.class);
+        for (HaxeNamedComponent declaration : children) {
           if (!(declaration instanceof PsiMember)) continue;
           if (declaration instanceof HaxeFieldDeclaration varDeclaration) {
             if (varDeclaration.isPublic() && varDeclaration.isStatic()) {
@@ -896,9 +960,8 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
                           ? (HaxeClass) element
                           : PsiTreeUtil.getParentOfType(element, HaxeClass.class);
 
-    //TODO  cache in element ?
     if (haxeClass != null) {
-      return new HaxeClassModel(haxeClass);
+      return haxeClass.getModel();
     }
     return null;
   }
@@ -958,5 +1021,29 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
 
   public boolean isStructInit() {
     return hasCompileTimeMeta(HaxeMeta.STRUCT_INIT);
+  }
+
+  private final RecursionGuard<PsiElement> inheritsFromRecursionGuard = RecursionManager.createGuard("inheritsFromRecursionGuard");
+
+  public boolean inheritsFrom(HaxeClass haxeClass) {
+    return Boolean.TRUE.equals(inheritsFromRecursionGuard.doPreventingRecursion(this.haxeClass, true, () -> {
+        List<HaxeClassReferenceModel> interfaces = getImplementingInterfaces();
+        for (HaxeClassReferenceModel anInterface : interfaces) {
+            HaxeClassModel haxeClassModel = anInterface.getHaxeClassModel();
+            if (haxeClassModel != null) {
+                if (haxeClassModel.haxeClass == haxeClass) return true;
+                if (haxeClassModel.inheritsFrom(haxeClass)) return true;
+            }
+        }
+        List<HaxeClassReferenceModel> extendingTypes = getExtendingTypes();
+        for (HaxeClassReferenceModel extendingType : extendingTypes) {
+            HaxeClassModel haxeClassModel = extendingType.getHaxeClassModel();
+            if (haxeClassModel != null) {
+                if (haxeClassModel.haxeClass == haxeClass) return true;
+                if (haxeClassModel.inheritsFrom(haxeClass)) return true;
+            }
+        }
+        return false;
+    }));
   }
 }

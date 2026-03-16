@@ -25,11 +25,10 @@ import com.intellij.openapi.diagnostic.LogLevel;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.roots.LanguageLevelProjectExtension;
 import com.intellij.openapi.util.RecursionManager;
+import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
 import com.intellij.plugins.haxe.ide.module.HaxeModuleType;
 import com.intellij.plugins.haxe.util.HaxeTestUtils;
-import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiElementFactory;
 import com.intellij.psi.codeStyle.CodeStyleSettings;
@@ -90,14 +89,17 @@ abstract public class HaxeCodeInsightFixtureTestCase extends UsefulTestCase {
 
     tuneFixture(moduleFixtureBuilder);
 
-    myFixture.setTestDataPath(getTestDataPath());
+    String path = getTestDataPath();
+    myFixture.setTestDataPath(path);
     myFixture.setUp();
+
+    // required for tests that compare results to files in testdata
+    VfsRootAccess.allowRootAccess(getProject(), path);
 
     // disable RecursionPrevention assert as type inference will cause several RecursionPrevention events.
     RecursionManager.disableAssertOnRecursionPrevention(myFixture.getProjectDisposable());
     RecursionManager.disableMissedCacheAssertions(myFixture.getProjectDisposable());
 
-    LanguageLevelProjectExtension.getInstance(getProject()).setLanguageLevel(LanguageLevel.JDK_1_8);
   }
 
   protected boolean toAddSourceRoot() {

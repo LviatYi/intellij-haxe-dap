@@ -3,11 +3,15 @@ package com.intellij.plugins.haxe.model.evaluator.assign;
 import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.util.RecursionGuard;
 import com.intellij.openapi.util.RecursionManager;
+import com.intellij.plugins.haxe.lang.psi.HaxeClass;
 import com.intellij.plugins.haxe.model.type.ResultHolder;
+import com.intellij.plugins.haxe.model.type.SpecificHaxeClassReference;
 import com.intellij.plugins.haxe.model.type.SpecificTypeReference;
 import lombok.CustomLog;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Objects;
 
 @CustomLog
 public class HaxeTypeCompatible {
@@ -42,6 +46,10 @@ public class HaxeTypeCompatible {
     static public boolean canAssignToFromReference(@Nullable ResultHolder to, @Nullable ResultHolder from) {
         if (to == null || from == null) return false;
         return canAssignToFromEvaluation(to, from, DEFAULT_SETTINGS, null).result;
+    }
+    static public boolean canAssignToFromReference(@Nullable SpecificTypeReference to, @Nullable SpecificTypeReference from, boolean strict) {
+        if (to == null || from == null) return false;
+        return canAssignToFromEvaluation(to.createHolder(), from.createHolder(),  strict ? DEFAULT_STRICT_SETTINGS : DEFAULT_SETTINGS, null).result;
     }
 
     /**
@@ -226,6 +234,27 @@ public class HaxeTypeCompatible {
             }
         }
         return evaluation;
+    }
+
+    public static boolean isShadowingType(SpecificTypeReference typeA, SpecificTypeReference typeB) {
+        if(typeA.isNullType() && typeA instanceof SpecificHaxeClassReference reference) {
+            typeA = reference.unwrapNullType();
+        }
+        if(typeB.isNullType() && typeB instanceof SpecificHaxeClassReference reference) {
+            typeB = reference.unwrapNullType();
+        }
+        if(typeA instanceof SpecificHaxeClassReference classA && !classA.isTypeParameter()){
+            if(typeB instanceof SpecificHaxeClassReference classB && !classB.isTypeParameter()){
+                HaxeClass haxeClassA = classA.getHaxeClass();
+                HaxeClass HaxeClassB = classB.getHaxeClass();
+                if(haxeClassA != null && HaxeClassB != null && haxeClassA != HaxeClassB) {
+                    String qualifiedNameA = haxeClassA.getQualifiedName();
+                    String qualifiedNameB = HaxeClassB.getQualifiedName();
+                    return Objects.equals(qualifiedNameB, qualifiedNameA);
+                }
+            }
+        }
+        return false;
     }
 
 

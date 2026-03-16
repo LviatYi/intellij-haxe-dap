@@ -4,6 +4,7 @@ import org.jetbrains.grammarkit.tasks.GenerateLexerTask
 import org.jetbrains.grammarkit.tasks.GenerateParserTask
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.extensions.IntelliJPlatformExtension
 import org.jetbrains.intellij.platform.gradle.models.ProductRelease
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 
@@ -14,17 +15,17 @@ plugins {
     // Java support
     id("java")
     // Kotlin support
-    id("org.jetbrains.kotlin.jvm") version "2.0.21"
+    id("org.jetbrains.kotlin.jvm") version "2.2.0"
     // Gradle IntelliJ Plugin
-    id("org.jetbrains.intellij.platform") version "2.1.0"
+    id("org.jetbrains.intellij.platform") version "2.10.5"
     // Gradle Changelog Plugin
     id("org.jetbrains.changelog") version "2.0.0"
     // Gradle Qodana Plugin
-    id("org.jetbrains.qodana") version "0.1.13"
+    id("org.jetbrains.qodana") version "2025.1.1"
     // Gradle Kover Plugin
-    id("org.jetbrains.kotlinx.kover") version "0.6.1"
+    id("org.jetbrains.kotlinx.kover") version "0.9.1"
     // generate parser and lexer
-    id("org.jetbrains.grammarkit") version "2022.3.2.2"
+    id("org.jetbrains.grammarkit") version "2023.3.0.1"
     // console output for tests
     id("com.adarshr.test-logger") version "3.2.0"
 }
@@ -43,6 +44,9 @@ dependencies {
     implementation("org.commonmark:commonmark:0.21.0")
     implementation("org.commonmark:commonmark-ext-autolink:0.21.0")
     implementation("org.commonmark:commonmark-ext-gfm-tables:0.21.0")
+
+    implementation("tools.jackson.core:jackson-databind:3.0.4")
+    implementation("org.apache.commons:commons-text:1.14.0")
 
     implementation(project(":common"))
     implementation(project(":jps-plugin"))
@@ -79,7 +83,6 @@ dependencies {
 
     intellijPlatform {
         pluginVerifier()
-        instrumentationTools()
         create(platformType, platformVersion)
 
         plugins(properties("platformPlugins").map { it.split(',') })
@@ -120,7 +123,6 @@ subprojects {
         testAnnotationProcessor ("org.projectlombok:lombok:1.18.34")
 
         intellijPlatform {
-            instrumentationTools()
 
             val type = providers.gradleProperty("platformType")
             val version = providers.gradleProperty("platformVersion")
@@ -147,33 +149,24 @@ repositories {
 }
 
 // Configure Gradle IntelliJ Plugin - read more: https://plugins.jetbrains.com/docs/intellij/tools-gradle-intellij-plugin.html
-intellijPlatform  {
-    pluginConfiguration   {
-    name = properties("pluginName").get()
-    group = properties("pluginGroup").get()
+intellijPlatform {
+    pluginConfiguration {
+        name = properties("pluginName").get()
+        group = properties("pluginGroup").get()
 
-    ideaVersion.sinceBuild.set(properties("pluginSinceBuild"))
-    ideaVersion.untilBuild.set(properties("pluginUntilBuild"))
-
+        ideaVersion.sinceBuild.set(properties("pluginSinceBuild"))
+        ideaVersion.untilBuild.set(properties("pluginUntilBuild"))
     }
-    verifyPlugin {
+
+    pluginVerification(fun IntelliJPlatformExtension.PluginVerification.() {
         freeArgs = listOf("-mute", "TemplateWordInPluginId,ForbiddenPluginIdPrefix")
         failureLevel = listOf(
-//            VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
-            VerifyPluginTask.FailureLevel.MISSING_DEPENDENCIES
+//            VerifyPluginTask.FailureLevel.MISSING_DEPENDENCIES
         )
         ides {
-            //TODO  problem verifying 2024.2 beta, emojipicker not found, + timeout ?
-//            recommended()
-            select {
-                sinceBuild.set("240")
-                untilBuild.set("241.*")
-//                sinceBuild.set(properties("pluginSinceBuild"))
-//                untilBuild.set(properties("pluginUntilBuild"))
-            }
+            recommended()
         }
-    }
-//    instrumentCode = false
+    })
 }
 
 
@@ -213,7 +206,7 @@ tasks {
     }
 
     patchPluginXml {
-        version =properties("pluginVersion").get();
+        version = properties("pluginVersion").get();
         sinceBuild.set(properties("pluginSinceBuild"))
         untilBuild.set(properties("pluginUntilBuild"))
 

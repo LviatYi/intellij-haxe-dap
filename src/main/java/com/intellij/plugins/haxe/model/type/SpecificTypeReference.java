@@ -19,6 +19,7 @@
  */
 package com.intellij.plugins.haxe.model.type;
 
+import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxeDummyASTNode;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxePsiCompositeElementImpl;
@@ -260,10 +261,27 @@ public abstract class SpecificTypeReference {
   }
 
   final public boolean isNumeric() {
-    return isInt() || isFloat() || isSingle();
+    return isInt() || isFloat() || isSingle() || canCastToNumeric();
   }
 
-  final public boolean isBool() {
+    // Some targets have their own numeric types (see cpp  & cs)
+    // instead of adding all definitions from all languages we "cheat" by just check
+    // if the type is a core runtime type that can be casted to the normal numeric types.
+    private boolean canCastToNumeric() {
+        if (this instanceof SpecificHaxeClassReference classReference) {
+            if(classReference.isRuntimeValueMeta() && classReference.isCoreType()  && classReference.isAbstractType()) {
+                List<SpecificTypeReference> directCastType = classReference.getDirectCastToTypes();
+                for (SpecificTypeReference typeReference : directCastType) {
+                    if(typeReference.isNumeric()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    final public boolean isBool() {
     return this.isNamedType(BOOL);
   }
 
@@ -391,6 +409,14 @@ public abstract class SpecificTypeReference {
           return typedefDeclaration.getTypeOrAnonymous().getAnonymousType() != null;
         }
       }
+    }
+    return false;
+  }
+  public boolean isObjectLiteral() {
+    if (this instanceof SpecificHaxeAnonymousReference) return true;
+    if (this instanceof SpecificHaxeClassReference specificHaxeClassReference) {
+      HaxeClass aClass = specificHaxeClassReference.getHaxeClassReference().getHaxeClass();
+      if (aClass instanceof HaxeObjectLiteral) return true;
     }
     return false;
   }
@@ -535,6 +561,7 @@ public abstract class SpecificTypeReference {
 
   @NotNull
   private static HaxeClassReference getUnknownClassReference(@NotNull PsiElement context) {
+    ProgressIndicatorProvider.checkCanceled();
     PsiUtilCore.ensureValid(context);
     return new HaxeClassReference( UNKNOWN, HaxeClass.createUnknownClass(context.getNode()).getModel(), context);
   }

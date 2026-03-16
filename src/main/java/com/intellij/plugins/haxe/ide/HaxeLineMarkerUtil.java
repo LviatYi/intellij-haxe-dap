@@ -35,34 +35,45 @@ public class HaxeLineMarkerUtil {
         final PsiElement element;
         if (namedComponent instanceof HaxeMethodDeclaration methodDeclaration) {
             HaxeMethodModel model = methodDeclaration.getModel();
+            String methodName = model.getName();
+
             // ignore constructors
             if (model.getName().equals("new")) {
                 return null;
             }
-            
-            @Nullable HaxeFieldModel propModel = model.getDeclaredProp();
-            findName = propModel != null ? propModel.getName() : model.getName();
-            overrides = model.isOverride();
-            element = methodDeclaration.getComponentName().getIdentifier().getFirstChild();
+          @Nullable HaxeFieldModel propModel = model.getDeclaredProp();
+          findName = propModel != null ? propModel.getName() : model.getName();
+          overrides = model.isOverride();
+          element = methodDeclaration.getComponentName().getIdentifier().getFirstChild();
         }
         else if (namedComponent instanceof HaxeFieldDeclaration propDeclaration) {
-            findName = propDeclaration.getName();
-            overrides = false;
-            element = propDeclaration.getComponentName().getIdentifier().getFirstChild();
+          findName = propDeclaration.getName();
+          overrides = false;
+          element = propDeclaration.getComponentName().getIdentifier().getFirstChild();
         }
         else {
-            return null;
+          return null;
         }
-        
-        final List<HaxeNamedComponent> filteredSuperItems = ContainerUtil.filter(superItems, item -> componentNameMatches(item, findName));
+
+        final List<HaxeNamedComponent> filteredSuperItems = ContainerUtil.filter(superItems, item -> componentNameMatches(item, methodName));
         if (filteredSuperItems.isEmpty()) {
             return null;
         }
-        boolean fromAbstract = filteredSuperItems.stream()
-          .filter(HaxeMethod.class::isInstance)
-          .map(HaxeMethod.class::cast)
-          .anyMatch(haxeMethod -> haxeMethod.getModel().isAbstract());
-        
+
+        boolean fromInterface  = false;
+        boolean fromAbstract = false;
+        for (HaxeNamedComponent filteredSuperItem : filteredSuperItems) {
+          if (filteredSuperItem instanceof HaxeMethod) {
+            HaxeMethod method = (HaxeMethod) filteredSuperItem;
+            HaxeMethodModel superModel = method.getModel();
+            fromAbstract = superModel.isAbstract();
+            fromInterface = !superModel.isInInterface();
+            break;
+          }
+        }
+
+        final boolean overrides = model.isOverride();
+        final PsiElement element = methodDeclaration.getComponentName().getIdentifier().getFirstChild();
         final Icon icon = overrides ? AllIcons.Gutter.OverridingMethod : AllIcons.Gutter.ImplementingMethod;
         Supplier<String> accessibleNameProvider = () -> overrides ? "Overriding Method" : "Implementing Method";
 

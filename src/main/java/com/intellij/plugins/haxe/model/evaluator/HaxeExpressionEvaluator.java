@@ -28,6 +28,7 @@ import com.intellij.plugins.haxe.lang.psi.impl.AbstractHaxeNamedComponent;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxeObjectLiteralImpl;
 import com.intellij.plugins.haxe.model.*;
 import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionContext;
+import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionContextContainer;
 import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionEvaluation;
 import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionUtil;
 import com.intellij.plugins.haxe.model.type.*;
@@ -50,6 +51,7 @@ import static com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluatorH
 import static com.intellij.plugins.haxe.model.evaluator.HaxeExpressionUsageUtil.findUsageAsParameterInFunctionCall;
 import static com.intellij.plugins.haxe.model.evaluator.HaxeExpressionUsageUtil.searchReferencesForTypeParameters;
 import static com.intellij.plugins.haxe.model.type.HaxeMacroTypeUtil.getTypeDefinition;
+import static com.intellij.plugins.haxe.util.UsefulPsiTreeUtil.getExpectedTypeForReturn;
 
 @CustomLog
 public class HaxeExpressionEvaluator {
@@ -101,7 +103,7 @@ public class HaxeExpressionEvaluator {
     ProgressIndicatorProvider.checkCanceled();
       HaxeExpressionEvaluatorContext context = new HaxeExpressionEvaluatorContext(element);
       ResultHolder result = handleWithRecursionGuard(element, context, null);
-      context.result = result != null ? result : createUnknown(element);
+      context.result = result != null ? result : createUnknown(element, false);
       return context;
   }
 
@@ -240,7 +242,7 @@ public class HaxeExpressionEvaluator {
     }
 
     if (element instanceof HaxeEnumExtractedValueReference extractedValue) {
-      return handleEnumExtractedValue(extractedValue, resolver);
+      return handleExtractedValue(extractedValue, resolver);
     }
 
 
@@ -270,8 +272,11 @@ public class HaxeExpressionEvaluator {
         return handleReferenceExpression(context, resolver, referenceExpression);
       }
 
-      if (element instanceof HaxeCastExpression castExpression) {
-        return handleCastExpression(castExpression);
+      if (element instanceof HaxeSafeCastExpression safeCastExpression) {
+        return handleSafeCastExpression(safeCastExpression);
+      }
+      if (element instanceof HaxeUnsafeCastExpression unsafeCastExpression) {
+        return handleUnsafeCastExpression(unsafeCastExpression);
       }
 
       if (element instanceof HaxeMapLiteral mapLiteral) {
@@ -412,6 +417,8 @@ public class HaxeExpressionEvaluator {
         }
       } else if (macroValueExpression.getMacroTopLevelDeclaration() != null) {
         return getTypeDefinition(element).createHolder();
+      }else {
+        return HaxeMacroTypeUtil.getExpr(element).createHolder();
       }
     }
     if (element instanceof HaxeMacroClassReification classReification) {
@@ -610,7 +617,7 @@ public class HaxeExpressionEvaluator {
   }
   @NotNull
   public static List<PsiReference> referenceSearch(final HaxeComponentName componentName, @Nullable final PsiElement searchScope) {
-    SearchScope scope = HaxeExpressionEvaluatorSearchUtil.getSearchScope(componentName, searchScope);
+    SearchScope scope = HaxeExpressionEvaluatorSearchUtil.getSmallestPossibleSearchScope(componentName, searchScope);
     return referenceSearch(componentName, scope);
   }
 
@@ -736,10 +743,12 @@ public class HaxeExpressionEvaluator {
           final HaxeReference leftReference = PsiTreeUtil.getChildOfType(callExpression.getExpression(), HaxeReference.class);
           if (hint != null && leftReference == reference) {
             if (resolved instanceof HaxeMethod method ) {
-              HaxeCallExpressionContext callExpressionContext = HaxeCallExpressionUtil.createContextForMethodCall(callExpression, method);
-              HaxeCallExpressionEvaluation validation  = callExpressionContext.evaluate();
-              ResultHolder hintResolved = validation.getCallExpressionResolver().resolve(hint);
-              if (hintResolved != null) return hintResolved;
+              HaxeCallExpressionContextContainer contextContainer = HaxeCallExpressionUtil.createContextForMethodCall(callExpression, method);
+              HaxeCallExpressionEvaluation validation  = contextContainer.evaluateContexts();
+              if(validation != null) {
+                ResultHolder hintResolved = validation.getCallExpressionResolver().resolve(hint);
+                if (hintResolved != null) return hintResolved;
+              }
             }
           }
         }
@@ -759,6 +768,9 @@ public class HaxeExpressionEvaluator {
     // we need to find  where the literal is used to find correct type
     if (objectLiteral.getParent() instanceof HaxeAssignExpression assignExpression) {
       objectLiteralType = handleWithRecursionGuard(assignExpression.getLeftExpression(), context, resolver);
+    }
+    if (objectLiteral.getParent() instanceof HaxeReturnStatement returnStatement) {
+      return getExpectedTypeForReturn(returnStatement);
     }
     if (objectLiteral.getParent() instanceof HaxeVarInit varInit) {
       HaxePsiField field = PsiTreeUtil.getParentOfType(varInit, HaxePsiField.class);

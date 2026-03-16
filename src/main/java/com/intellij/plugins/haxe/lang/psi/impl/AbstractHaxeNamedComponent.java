@@ -40,6 +40,7 @@ import com.intellij.psi.PsiNamedElement;
 import com.intellij.psi.PsiReference;
 import com.intellij.psi.impl.source.SourceTreeToPsiMap;
 import com.intellij.psi.impl.source.tree.ChildRole;
+import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
@@ -79,6 +80,9 @@ abstract public class AbstractHaxeNamedComponent extends HaxePsiCompositeElement
   @NonNls
   public String getName() {
     return getCachedName(this);
+  }
+  public boolean isMacroName() {
+    return (this.getComponentName() != null && this.getComponentName().getIdentifier() instanceof  HaxeMacroIdentifier);
   }
 
   private static String getCachedName(AbstractHaxeNamedComponent namedComponent) {
@@ -173,14 +177,21 @@ abstract public class AbstractHaxeNamedComponent extends HaxePsiCompositeElement
             haxeClass = typedefDeclaration;
           }
         }
+
         if (haxeClass == null) {
           return "";
         }
-        final Pair<String, String> qName = HaxeResolveUtil.splitQName(haxeClass.getQualifiedName());
+
+        String qualifiedName = haxeClass.getQualifiedName();
+        if(qualifiedName == null) {
+          return "";
+        }
+
+        final Pair<String, String> qName = HaxeResolveUtil.splitQName(qualifiedName);
         if (haxeClass == AbstractHaxeNamedComponent.this) {
           return qName.getFirst();
         }
-        return haxeClass.getQualifiedName() + (path.isEmpty() ? "" : "." + path);
+        return qualifiedName + (path.isEmpty() ? "" : "." + path);
       }
 
       @Override
@@ -268,9 +279,28 @@ abstract public class AbstractHaxeNamedComponent extends HaxePsiCompositeElement
   }
 
   @Override
+  public boolean isOverload() {
+    final HaxePsiModifier[] declarationAttributeList = PsiTreeUtil.getChildrenOfType(this, HaxePsiModifier.class);
+    return HaxeResolveUtil.getDeclarationTypes(declarationAttributeList).contains(HaxeTokenTypes.KOVERLOAD);
+  }
+
+  @Override
   public boolean isInline() {
     final HaxePsiModifier[] declarationAttributeList = PsiTreeUtil.getChildrenOfType(this, HaxePsiModifier.class);
     return HaxeResolveUtil.getDeclarationTypes(declarationAttributeList).contains(HaxeTokenTypes.KINLINE);
+  }
+  @Nullable
+  @Override
+  public PsiElement getModiferPsi(IElementType tokenType) {
+    final HaxePsiModifier[] declarationAttributeList = PsiTreeUtil.getChildrenOfType(this, HaxePsiModifier.class);
+    if (declarationAttributeList != null) {
+      for (HaxePsiModifier modifier : declarationAttributeList) {
+        if(modifier.getFirstChild() instanceof LeafPsiElement psiElement) {
+          if (psiElement.getElementType() == tokenType) return psiElement;
+        }
+      }
+    }
+    return null;
   }
 
   @Override
@@ -327,24 +357,6 @@ abstract public class AbstractHaxeNamedComponent extends HaxePsiCompositeElement
       return roleCandidate;
     }
     return 0; //ChildRole.NONE;
-  }
-
-
-  private Set<Key<?>> cacheKeys;
-  public void registerCacheKey(Key<?> key) {
-    if (cacheKeys == null) cacheKeys = new HashSet<>();
-    cacheKeys.add(key);
-  }
-  @Override
-  public void subtreeChanged() {
-    super.subtreeChanged();
-    if (cacheKeys != null) {
-      clearCacheKeys(cacheKeys);
-    }
-  }
-
-  private void clearCacheKeys(Set<Key<?>> cacheKeys) {
-    cacheKeys.forEach( key -> changeUserMap(getUserMap(), getUserMap().minus(key)));
   }
 
 }

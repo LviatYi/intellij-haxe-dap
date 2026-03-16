@@ -73,6 +73,11 @@ public class HaxeSpecificFunction extends HaxeAbstractTypeDeclarationImpl implem
       HaxeTypeTag typeTag = parameter.getTypeTag();
       return null != typeTag ? typeTag.getTypeOrAnonymous() : null;
     }
+
+    @Override
+    public String getName() {
+      return getComponentName() != null ? getComponentName().getText() : null;
+    }
   }
 
   final private HaxeGenericSpecialization specialization;
@@ -99,12 +104,18 @@ public class HaxeSpecificFunction extends HaxeAbstractTypeDeclarationImpl implem
     this(psiClass, null, functionType, specialization);
   }
 
-  public HaxeSpecificFunction(@NotNull HaxeFunctionType functionType, @NotNull HaxeGenericSpecialization specialization) {
-    this(getFunctionClass(functionType), functionType, specialization);
-  }
 
-  public HaxeSpecificFunction(@NotNull HaxeMethod method, @NotNull HaxeGenericSpecialization specialization) {
-    this(getFunctionClass(method), method, specialization);
+  public static HaxeSpecificFunction tryCreate(HaxeFunctionType functionType, @NotNull HaxeGenericSpecialization specialization) {
+    // if SDK is not configured we wont find the SDK Function class so we return null instead
+    HaxeAbstractTypeDeclaration functionClass = getFunctionClass(functionType);
+    if (functionClass == null) return null;
+    return new HaxeSpecificFunction(functionClass, functionType, specialization);
+  }
+  public static HaxeSpecificFunction tryCreate(@NotNull HaxeMethod method,  @NotNull HaxeGenericSpecialization specialization) {
+    // if SDK is not configured we wont find the SDK Function class so we return null instead
+    HaxeAbstractTypeDeclaration functionClass = getFunctionClass(method);
+    if (functionClass == null) return null;
+    return new HaxeSpecificFunction(functionClass, method, specialization);
   }
 
   private static HaxeAbstractTypeDeclaration getFunctionClass(PsiElement context) {

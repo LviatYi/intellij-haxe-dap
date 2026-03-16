@@ -15,6 +15,8 @@
  */
 package com.intellij.plugins.haxe.model.type;
 
+import com.intellij.openapi.util.RecursionGuard;
+import com.intellij.openapi.util.RecursionManager;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxeTypeParameterDeclaration;
 import com.intellij.plugins.haxe.model.*;
@@ -32,6 +34,8 @@ import java.util.*;
 import static com.intellij.plugins.haxe.model.type.HaxeParameterUtil.mapArgumentsToParameters;
 
 public class HaxeGenericResolverUtil {
+
+    private static final RecursionGuard<PsiElement> statementRecursionGuard = RecursionManager.createGuard("StatementGenericResolverGuard");
 
   @NotNull
   public static HaxeGenericResolver generateResolverFromScopeParents(PsiElement element) {
@@ -90,14 +94,10 @@ public class HaxeGenericResolverUtil {
   @NotNull static HaxeGenericResolver appendStatementGenericResolver(PsiElement element, @NotNull HaxeGenericResolver resolver) {
     if (null == element) return resolver;
 
-    HaxeReference left = HaxeResolveUtil.getLeftReference(element);
-    if ( null != left) {
-      appendStatementGenericResolver(left, resolver);
-    }
     if (element instanceof HaxeReference) {
-      ResultHolder result1 =
-        HaxeExpressionEvaluator.evaluateWithRecursionGuard(element, new HaxeExpressionEvaluatorContext(element), null).result;
-      if (!result1.isUnknown() && result1.getClassType() != null) {
+        ResultHolder result1 =  statementRecursionGuard.doPreventingRecursion(element, true,
+                () -> HaxeExpressionEvaluator.evaluate(element, new HaxeExpressionEvaluatorContext(element), null).result);
+      if (result1 != null && !result1.isUnknown() && result1.getClassType() != null) {
         SpecificHaxeClassReference result = result1.getClassType();
         resolver.addAll(result.getGenericResolver());
       if (result.getHaxeClass() != null) {
@@ -146,12 +146,15 @@ public class HaxeGenericResolverUtil {
           // entries that have a constraint should keep the constraint and let the type
           // checker deal with any issues.
           HaxeExpressionList parameterList = call.getExpressionList();
-          List<HaxeExpression> expressionList = null != parameterList ? parameterList.getExpressionList() : new ArrayList<>();
+          List<HaxeExpression> expressionList =new ArrayList<>();
+          if(null != parameterList) {
+            expressionList.addAll(parameterList.getExpressionList());
+          }
           // if this is a static extension method call we need to add the type of the callie
           if (call.resolveIsStaticExtension()) {
             // add callie as parameter
             HaxeReference callieReference = HaxeResolveUtil.getLeftReference(callExpression);
-            if (callieReference != null)expressionList.add(0, callieReference);
+            if (callieReference != null)expressionList.addFirst(callieReference);
           }
           if (!expressionList.isEmpty()) {
 
@@ -178,6 +181,9 @@ public class HaxeGenericResolverUtil {
                   // resolve constraint if type parameter ex. (T:B, B:DisplayObject)
                   if (constraint != null && constraint.isTypeParameter()) constraint = methodResolver.resolve(constraint);
                   if (constraint == null || constraint.canAssign(typeParameterType)) {
+                    if(typeParameterType.isDynamic() && typeParameterType.getConstant()  instanceof HaxeNull){
+                      continue;// ignore  null arguments
+                    }
                     methodResolver.addArgument(typeParameter, typeParameterType);
                   }
                 }

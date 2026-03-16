@@ -140,18 +140,20 @@ Haxe File
                               HaxePsiToken:)(')')
                           HaxePsiToken::(':')
                           SWITCH_CASE_BLOCK
-                            LITERAL_EXPRESSION
+                            CONSTANT_EXPRESSION
                               HaxePsiToken:true('true')
                             HaxePsiToken:;(';')
                         SWITCH_CASE
                           HaxePsiToken:case('case')
                           SWITCH_CASE_EXPR
-                            REFERENCE_EXPRESSION
-                              IDENTIFIER
-                                HaxePsiToken:ID('_')
+                            ENUM_EXTRACTED_VALUE
+                              ENUM_EXTRACTED_VALUE_REFERENCE
+                                COMPONENT_NAME
+                                  IDENTIFIER
+                                    HaxePsiToken:ID('_')
                           HaxePsiToken::(':')
                           SWITCH_CASE_BLOCK
-                            LITERAL_EXPRESSION
+                            CONSTANT_EXPRESSION
                               HaxePsiToken:false('false')
                             HaxePsiToken:;(';')
                         HaxePsiToken:}('}')

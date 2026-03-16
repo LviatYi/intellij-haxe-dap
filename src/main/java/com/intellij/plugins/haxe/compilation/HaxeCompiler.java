@@ -19,11 +19,12 @@
 package com.intellij.plugins.haxe.compilation;
 
 import com.intellij.compiler.options.CompileStepBeforeRun;
-import com.intellij.execution.ExecutorRegistry;
 import com.intellij.execution.configurations.ModuleBasedConfiguration;
 import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.execution.configurations.RunConfigurationModule;
 import com.intellij.execution.executors.DefaultDebugExecutor;
+import com.intellij.execution.impl.ExecutionManagerImpl;
+import com.intellij.execution.impl.RunnerAndConfigurationSettingsImpl;
 import com.intellij.openapi.compiler.*;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleType;
@@ -48,7 +49,6 @@ import com.intellij.plugins.haxe.runner.debugger.HaxeDebugRunner;
 import com.intellij.plugins.haxe.tests.runner.HaxeTestsConfiguration;
 import com.intellij.plugins.haxe.util.HaxeCommonCompilerUtil;
 import com.intellij.plugins.haxe.util.HaxeSdkUtilBase;
-import com.intellij.util.PathUtil;
 import lombok.CustomLog;
 import org.jetbrains.annotations.NotNull;
 
@@ -199,10 +199,8 @@ public class HaxeCompiler implements FileProcessingCompiler {
   private static HaxeCommonCompilerUtil.CompilationContext createCompilationContext(final CompileContext context,
                                                                                     final Module module,
                                                                                     ModuleBasedConfiguration configuration) {
-
     final HaxeModuleSettings settings = HaxeModuleSettings.getInstance(module);
-    final boolean isDebug = ExecutorRegistry.getInstance()
-      .isStarting(context.getProject(), DefaultDebugExecutor.EXECUTOR_ID, HaxeDebugRunner.HAXE_DEBUG_RUNNER_ID);
+    final boolean isDebug = isDebug(module, configuration);
     final ModuleRootManager moduleRootManager = ModuleRootManager.getInstance(module);
     final Sdk sdk = moduleRootManager.getSdk();
     if (sdk == null) {
@@ -367,7 +365,12 @@ public class HaxeCompiler implements FileProcessingCompiler {
     };
   }
 
-  private static int findProcessingItemIndexByModule(ProcessingItem[] items, RunConfigurationModule moduleConfiguration) {
+    private static boolean isDebug(Module module, ModuleBasedConfiguration configuration) {
+        String name = RunnerAndConfigurationSettingsImpl.getUniqueIdFor(configuration);
+        return ExecutionManagerImpl.getInstance(module.getProject()).isStarting(name, DefaultDebugExecutor.EXECUTOR_ID, HaxeDebugRunner.HAXE_DEBUG_RUNNER_ID);
+    }
+
+    private static int findProcessingItemIndexByModule(ProcessingItem[] items, RunConfigurationModule moduleConfiguration) {
     final Module module = moduleConfiguration.getModule();
     if (module == null) {
       return -1;

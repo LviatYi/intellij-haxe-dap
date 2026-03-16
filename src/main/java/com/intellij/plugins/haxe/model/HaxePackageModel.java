@@ -69,8 +69,8 @@ public class HaxePackageModel implements HaxeExposableModel {
 
   public HaxeModel resolve(FullyQualifiedInfo info) {
     if (info.packagePath.equals(this.path)) {
-      if (info.fileName == null && info.className == null) return this;
-      HaxeFileModel file = getFileModel(info.fileName);
+      if (info.moduleName == null && info.className == null) return this;
+      HaxeFileModel file = getFileModel(info.moduleName);
       if (file != null) return file.resolve(info);
       return null;
     } else if (info.packagePath.indexOf(path) == 0 || path.isEmpty()) {
@@ -132,8 +132,8 @@ public class HaxePackageModel implements HaxeExposableModel {
 
       if (directory != null && directory.isValid()) {
         PsiFile file = directory.findFile(fname + ".hx");
-        if (file != null && file.isValid() && file instanceof HaxeFile) {
-          return (HaxeFile)file;
+        if (file != null && file.isValid() && file instanceof HaxeFile haxeFile) {
+          return haxeFile;
         }
       }
 
@@ -180,11 +180,29 @@ public class HaxePackageModel implements HaxeExposableModel {
           if(fileModel != null)result.addAll(fileModel.getExposedMembers());
         }
       }
-
-
       return result;
     }
+    return Collections.emptyList();
+  }
 
+  @NotNull
+  public List<HaxeModel> getModulesMainClass() {
+    PsiDirectory directory = root.access(path);
+    if (directory != null) {
+      PsiFile[] files = directory.getFiles();
+
+      List<HaxeModel>  result = new ArrayList<>();
+      for(PsiFile file : files) {
+        if( file instanceof HaxeFile) {
+          HaxeFileModel fileModel = HaxeFileModel.fromElement(file);
+          if(fileModel != null) {
+            HaxeClassModel mainClassModel = fileModel.getMainClassModel();
+            if(mainClassModel != null)result.add(mainClassModel);
+          }
+        }
+      }
+      return result;
+    }
     return Collections.emptyList();
   }
 

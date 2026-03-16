@@ -19,12 +19,14 @@
  */
 package com.intellij.plugins.haxe.util;
 
+import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.plugins.haxe.HaxeFileType;
 import com.intellij.plugins.haxe.HaxeLanguage;
 import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxeExpressionCodeFragmentImpl;
+import com.intellij.plugins.haxe.metadata.psi.impl.HaxeMetadataTypeName;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.psi.impl.PsiFileFactoryImpl;
@@ -61,6 +63,11 @@ public class HaxeElementGenerator {
     final HaxeBlockStatement statement = mainMethod.getBlockStatement();
     assert statement != null;
     return statement.getChildren()[0];
+  }
+  public static PsiElement createTypeFromText(Project myProject, String text) {
+    final HaxeFile dummyFile = createDummyFile(myProject, text);
+    final HaxeModule haxeModule = PsiTreeUtil.getChildOfType(dummyFile, HaxeModule.class);
+      return PsiTreeUtil.getChildOfType(haxeModule, HaxeClass.class);
   }
   public static HaxeFieldDeclaration createVarDeclaration(Project myProject, String text) {
     final HaxeFile dummyFile = createDummyFile(myProject, HaxeCodeGenerateUtil.wrapFunction(text).getFirst());
@@ -140,6 +147,11 @@ public class HaxeElementGenerator {
     final HaxeFile dummyFile = createDummyFile(myProject, "import " + path + ";");
     return PsiTreeUtil.getChildOfType(dummyFile, HaxeImportStatement.class);
   }
+  @Nullable
+  public static HaxeUsingStatement createUsingStatementFromPath(Project myProject, String path) {
+    final HaxeFile dummyFile = createDummyFile(myProject, "using " + path + ";");
+    return PsiTreeUtil.getChildOfType(dummyFile, HaxeUsingStatement.class);
+  }
 
   @Nullable
   public static HaxePsiToken createEmptyStatement(Project myProject) {
@@ -162,7 +174,8 @@ public class HaxeElementGenerator {
   @NotNull
   public static PsiElement createComma(Project myProject) {
     final HaxeFile dummyFile =  createDummyFile(myProject, "var a,b;");
-    return dummyFile.getLastChild().getPrevSibling().getPrevSibling();
+    HaxeModuleFieldDeclaration childOfType = PsiTreeUtil.findChildOfType(dummyFile, HaxeModuleFieldDeclaration.class);
+    return childOfType.getNextSibling();
   }
 
 
@@ -210,12 +223,56 @@ public class HaxeElementGenerator {
     reformat(haxeClass);
     return (HaxeMethodDeclaration)haxeClass.getHaxeMethodsSelf(null).iterator().next();
   }
+  public static HaxeConstructorDeclaration createConstructorDeclaration(Project myProject,
+                                                              String text) {
+    final HaxeFile dummyFile = createDummyFile(myProject, HaxeCodeGenerateUtil.wrapFunction(text).getFirst());
+    final HaxeModule haxeModule = PsiTreeUtil.getChildOfType(dummyFile, HaxeModule.class);
+    final HaxeClass haxeClass = PsiTreeUtil.getChildOfType(haxeModule, HaxeClass.class);
+    assert haxeClass != null;
+    reformat(haxeClass);
+    return PsiTreeUtil.findChildOfType(haxeClass, HaxeConstructorDeclaration.class);
+  }
 
   private static void reformat(final PsiMember movedElement) {
     final TextRange range = movedElement.getTextRange();
     final PsiFile file = movedElement.getContainingFile();
     final PsiFile baseFile = file.getViewProvider().getPsi(file.getViewProvider().getBaseLanguage());
+
+    ProgressIndicatorProvider.checkCanceled();
     CodeStyleManager.getInstance(movedElement.getProject()).reformatText(baseFile, range.getStartOffset(), range.getEndOffset());
   }
 
+  public static PsiElement createMeta(Project myProject, HaxeMetadataTypeName metadataTypeName, boolean compileTime) {
+    return createMeta(myProject, metadataTypeName,compileTime, null);
+  }
+  public static PsiElement createMeta(Project myProject, HaxeMetadataTypeName metadataTypeName, boolean compileTime, String content) {
+    String meta = compileTime ?  metadataTypeName.asCompileTimeText() : metadataTypeName.asRunTimeTest();
+    if (content != null) meta += "(" + content+ ")";
+    return HaxeElementGenerator.createDummyFile(myProject, meta).getChildren()[0];
+  }
+
+  public static PsiElement createNewLine(@NotNull Project project) {
+    return PsiParserFacade.getInstance(project).createWhiteSpaceFromText("\n").copy();
+  }
+
+  public static PsiElement createClass(@NotNull Project project, String name) {
+      return createTypeFromText(project, "class " + name + "{\n}");
+  }
+
+  public static PsiElement createInterface(@NotNull Project project, String name) {
+    return createTypeFromText(project, "interface " + name + "{\n}");
+  }
+
+  public static PsiElement createEnum(@NotNull Project project, String name) {
+    return createTypeFromText(project, "enum " + name + "{\n}");
+  }
+
+  public static PsiElement createAbstract(@NotNull Project project, String name) {
+    return createTypeFromText(project, "abstract " + name + " {\n}");
+  }
+
+  public static HaxeEnumValueDeclaration createEnumValueDeclaration(@NotNull Project project, String name) {
+    PsiElement typeFromText = createTypeFromText(project, "enum TmpEnum {" + name + ";}");
+    return PsiTreeUtil.findChildOfType(typeFromText, HaxeEnumValueDeclaration.class);
+  }
 }

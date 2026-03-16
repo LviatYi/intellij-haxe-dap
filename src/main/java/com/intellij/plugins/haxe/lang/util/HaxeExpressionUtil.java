@@ -88,6 +88,29 @@ public class HaxeExpressionUtil {
            || expr instanceof HaxeArrayAccessExpression;
   }
 
+  public static boolean isInWriteOperation(@NotNull HaxeReferenceExpression referenceExpression) {
+    PsiElement parent = referenceExpression.getParent();
+    if (parent instanceof HaxeAssignExpression assignExpression) {
+      //  left write / right read
+      return PsiTreeUtil.isAncestor(assignExpression.getLeftExpression(), referenceExpression, false);
+    }
+    if(parent instanceof HaxePostfixExpression) return true;
+    if(parent instanceof HaxePrefixExpression prefixExpression) {
+      HaxeOperator operator = prefixExpression.getOperator();
+        return operator.textMatches("++") || operator.textMatches("--");
+    }
+    return false;
+  }
+  public static boolean isInReadOperation(@NotNull HaxeReferenceExpression referenceExpression) {
+    PsiElement parent = referenceExpression.getParent();
+    if (parent instanceof HaxeAssignExpression assignExpression) {
+      //  left write / right read
+      return PsiTreeUtil.isAncestor(assignExpression.getRightExpression(), referenceExpression, false);
+    }
+    return parent instanceof HaxePostfixExpression
+           || parent instanceof HaxePrefixExpression;
+  }
+
   /**
    * Determine if an expression is a constant expression eligible to be used as the
    * right-hand-side of a "static inline var", such that the compiler will consider
@@ -181,7 +204,9 @@ public class HaxeExpressionUtil {
       if (type == HaxeTokenTypes.LITFLOAT
           ||  type == HaxeTokenTypes.LITINT
           ||  type == HaxeTokenTypes.LITHEX
-          ||  type == HaxeTokenTypes.LITOCT) {
+          ||  type == HaxeTokenTypes.LITOCT
+          ||  type == HaxeTokenTypes.LITBIN
+      ) {
         return ConstantClass.NUMERIC;
       }
       if (type == HaxeTokenTypes.STRING_LITERAL_EXPRESSION) {
@@ -238,13 +263,19 @@ public class HaxeExpressionUtil {
       return ConstantClass.NOT_CONSTANT;
     }
 
-    if (is_type(expr, HaxeCastExpression.class)) {
+    if (is_type(expr, HaxeSafeCastExpression.class)) {
       // Casts without a target type are allowed.
-      HaxeCastExpression cast = (HaxeCastExpression)expr;
+      HaxeSafeCastExpression cast = (HaxeSafeCastExpression)expr;
       return null == cast.getFunctionType() &&
              null == cast.getTypeOrAnonymous()
              ? ConstantClass.NOT_CONSTANT
              : classifyConstantExpression(cast.getExpression());
+    }
+
+    if (is_type(expr, HaxeUnsafeCastExpression.class)) {
+      // Casts without a target type are allowed.
+      HaxeUnsafeCastExpression cast = (HaxeUnsafeCastExpression)expr;
+      return classifyConstantExpression(cast.getExpression());
     }
 
     if (is_type(expr, HaxeReferenceExpression.class)) {

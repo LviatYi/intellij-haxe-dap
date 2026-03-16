@@ -46,6 +46,10 @@ public class HaxeFieldModel extends HaxeMemberModel {
     return false;
   }
 
+  public boolean isMacroName() {
+    return getPsiField().isMacroName();
+  }
+
   @Nullable
   public HaxePropertyDeclaration getPropertyDeclarationPsi() {
     final PsiElement basePsi = getBasePsi();
@@ -74,10 +78,12 @@ public class HaxeFieldModel extends HaxeMemberModel {
     return getAccessorPsi(1);
   }
 
+  @NotNull
   public HaxeAccessorType getSetterType() {
     return HaxeAccessorType.fromPsi(getSetterPsi());
   }
 
+  @NotNull
   public HaxeAccessorType getGetterType() {
     return HaxeAccessorType.fromPsi(getGetterPsi());
   }
@@ -114,28 +120,37 @@ public class HaxeFieldModel extends HaxeMemberModel {
 
   @Nullable
   public HaxeMethodModel getGetterMethod() {
-    if (getGetterType() != HaxeAccessorType.GET) return null;
+    HaxeAccessorType getterType = getGetterType();
+    if (getterType != HaxeAccessorType.GET && getterType!= HaxeAccessorType.PRIVATE_GET) return null;
     HaxeClassModel declaringClass = this.getDeclaringClass();
+    boolean macroName = isMacroName();
+    String name = macroName ? this.getName().substring(1) : this.getName();
+    String prefix = macroName ? "$" : "";
+
     if (declaringClass != null) {
-      return declaringClass.getMethod("get_" + this.getName(), null);
+      return declaringClass.getMethod(prefix + "get_" + name, null);
     }
     HaxeModuleModel declaringModule = this.getDeclaringModule();
     if (declaringModule != null) {
-      return declaringModule.getMethod("get_" + this.getName(), null);
+      return declaringModule.getMethod(prefix + "get_" + name, null);
     }
     return null;
   }
 
   @Nullable
   public HaxeMethodModel getSetterMethod() {
-    if (getSetterType() != HaxeAccessorType.SET) return null;
+    HaxeAccessorType setterType = getSetterType();
+    if (setterType != HaxeAccessorType.SET && setterType != HaxeAccessorType.PRIVATE_SET) return null;
     HaxeClassModel declaringClass = this.getDeclaringClass();
+    boolean macroName = isMacroName();
+    String name = macroName ? this.getName().substring(1) : this.getName();
+    String prefix = macroName ? "$" : "";
     if (declaringClass != null) {
-      return declaringClass.getMethod("set_" + this.getName(), null);
+      return declaringClass.getMethod(prefix + "set_" + name, null);
     }
     HaxeModuleModel declaringModule = this.getDeclaringModule();
     if (declaringModule != null) {
-      return declaringModule.getMethod("set_" + this.getName(), null);
+      return declaringModule.getMethod(prefix + "set_" + name, null);
     }
     return null;
   }

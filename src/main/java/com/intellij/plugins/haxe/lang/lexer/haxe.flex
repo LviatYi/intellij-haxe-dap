@@ -178,7 +178,7 @@ mDIGIT = [:digit:]
 ESCAPE_SEQUENCE=\\[^\r\n]
 
 mMETA_PART = {mLETTER} ({mDIGIT} | {mLETTER})*
-META_ID =  {mMETA_PART} ("." {mMETA_PART})*
+META_ID =  ({mMETA_PART} ("." {mMETA_PART})*)?
 COMPILE_META_PREFIX="@:"
 RUNTIME_META_PREFIX="@"
 META=({RUNTIME_META_PREFIX} | {COMPILE_META_PREFIX}) {META_ID}
@@ -193,15 +193,28 @@ END_OF_LINE_COMMENT="/""/"[^\r\n]*
 mHEX_DIGIT = [0-9A-Fa-f]
 mINT_DIGIT = [0-9]
 mOCT_DIGIT = [0-7]
+mBIN_DIGIT = [0-1]
 
-mNUM_INT = "0" | ([1-9] {mINT_DIGIT}*)
-mNUM_HEX = ("0x" | "0X") {mHEX_DIGIT}+
+// handles digit separation with underscore ("_")
+mHEX_DIGIT_TAIL =((_|{mHEX_DIGIT})*{mHEX_DIGIT})
+mINT_DIGIT_TAIL =((_|{mINT_DIGIT})*{mINT_DIGIT})
+mBIN_DIGIT_TAIL =((_|{mBIN_DIGIT})*{mBIN_DIGIT})
+
+
+mNUM_INT = "0"   | ([1-9] {mINT_DIGIT_TAIL}*)
+mNUM_HEX = ("0x" | "0X") {mHEX_DIGIT} {mHEX_DIGIT_TAIL}*
+mNUM_BIN = ("0b" | "0B") {mBIN_DIGIT} {mBIN_DIGIT_TAIL}*
+
+// TODOMLO: NOT SURE IF HAXE ACTUALLY SUPPORTS OCTAL NUMBERS
 mNUM_OCT = "0" {mOCT_DIGIT}+
 
 mREG_EXP = "~/" ([^"/"] | {ESCAPE_SEQUENCE})* "/" [igmsu]*
 
-mFLOAT_EXPONENT = [eE] [+-]? {mDIGIT}+
-mNUM_FLOAT = ( (({mDIGIT}* "." {mDIGIT}+) | ({mDIGIT}+ "." {mDIGIT}*)) {mFLOAT_EXPONENT}?) | ({mDIGIT}+ {mFLOAT_EXPONENT})
+mBFLOAT_DIGIT_TAIL =((_|{mDIGIT})*{mDIGIT})
+mFLOAT_DIGITS = {mDIGIT} {mBFLOAT_DIGIT_TAIL}*
+
+mFLOAT_EXPONENT = [eE] [+-]? {mFLOAT_DIGITS}+
+mNUM_FLOAT = ( (({mFLOAT_DIGITS}? "." {mFLOAT_DIGITS}) | ({mFLOAT_DIGITS} "." {mFLOAT_DIGITS}?)) {mFLOAT_EXPONENT}?) | ({mFLOAT_DIGITS} {mFLOAT_EXPONENT})
 
 
 /*
@@ -264,7 +277,7 @@ CONDITIONAL_ERROR="#error"[^\r\n]*
 {WHITE_SPACE_CHAR}+                       { return emitToken( com.intellij.psi.TokenType.WHITE_SPACE);}
 
 {CONDITIONAL_LINE}                        { return emitToken( MSL_COMMENT); }
-{CONDITIONAL_ERROR}                       { return emitToken( MSL_COMMENT); }
+{CONDITIONAL_ERROR}                       { return emitToken( CONDITIONAL_ERROR); }
 {END_OF_LINE_COMMENT}                     { return emitToken( MSL_COMMENT); }
 {C_STYLE_COMMENT}                         { return emitToken( MML_COMMENT); }
 {DOC_COMMENT}                             { return emitToken( DOC_COMMENT); }
@@ -279,6 +292,7 @@ CONDITIONAL_ERROR="#error"[^\r\n]*
 
 {mNUM_FLOAT}                              {  return emitToken( LITFLOAT); }
 {mNUM_OCT}                                {  return emitToken( LITOCT); }
+{mNUM_BIN}                                {  return emitToken( LITBIN); }
 {mNUM_HEX}                                {  return emitToken( LITHEX); }
 {mNUM_INT}                                {  return emitToken( LITINT); }
 {mREG_EXP}                                {  return emitToken( REG_EXP); }
@@ -333,12 +347,13 @@ CONDITIONAL_ERROR="#error"[^\r\n]*
 "never"                                   {  return emitToken( KNEVER);  }
 "override"                                {  return emitToken( KOVERRIDE);  }
 "inline"                                  {  return emitToken( KINLINE);  }
-"macro" /({WHITE_SPACE_CHAR}+)            {  return emitToken( KMACRO2); }
-"macro:"
-                                          {
-                                            yypushback(1); // do not consume the colon (but catch the macro keyword)
-                                            return emitToken( KMACRO2);
-                                          }
+
+// "macro" is a valid package name so to avoid problems with qnames we require the keyword to be followed
+// by whitespace or other common symbols used in code that does not involve references.
+"macro" /{WHITE_SPACE_CHAR}               {  return emitToken( KMACRO2); }
+"macro" /\(                               {  return emitToken( KMACRO2); }
+"macro" /:                                {  return emitToken( KMACRO2); }
+
 
 "untyped"                                 {  return emitToken( KUNTYPED);  }
 "typedef"                                 {  return emitToken( KTYPEDEF);  }

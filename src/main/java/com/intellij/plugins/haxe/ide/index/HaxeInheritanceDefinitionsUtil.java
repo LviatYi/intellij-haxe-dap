@@ -1,12 +1,13 @@
 package com.intellij.plugins.haxe.ide.index;
 
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.progress.ProcessCanceledException;
-import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.plugins.haxe.lang.psi.HaxeClass;
 import com.intellij.psi.PsiClassType;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.searches.DefinitionsScopedSearch;
+import lombok.CustomLog;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -14,6 +15,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
+@CustomLog
 public class HaxeInheritanceDefinitionsUtil {
   public static Collection<HaxeClass> getItemsByQNameFirstLevelChildrenOnly(final HaxeClass haxeClass) {
     Project project = haxeClass.getProject();
@@ -21,13 +23,17 @@ public class HaxeInheritanceDefinitionsUtil {
       throw new ProcessCanceledException(new Throwable("Project disposed"));
     }
 
-    DumbService dumbService = DumbService.getInstance(project);
-    if (dumbService.isDumb()) {
-      dumbService.waitForSmartMode();
+    try {
+      return ReadAction.nonBlocking(() -> _getItemsByQNameFirstLevelChildrenOnly(haxeClass, project))
+              .inSmartMode(project)
+              .executeSynchronously();
+
+    } catch (ProcessCanceledException processCanceledException) {
+      throw processCanceledException;
+    } catch (IllegalStateException stateException) {
+      log.warn("Failed to execute in smartMode", stateException);
+      throw new ProcessCanceledException();
     }
-    return dumbService.tryRunReadActionInSmartMode(
-            () -> _getItemsByQNameFirstLevelChildrenOnly(haxeClass, project),
-            "Collecting inheritance information");
   }
 
 
@@ -37,12 +43,16 @@ public class HaxeInheritanceDefinitionsUtil {
       throw new ProcessCanceledException(new Throwable("Project disposed"));
     }
 
-    DumbService dumbService = DumbService.getInstance(project);
-    if (dumbService.isDumb()) {
-      dumbService.waitForSmartMode();
+    try {
+      return ReadAction.nonBlocking(() -> _getItemsByQNameIncludingSubChildren(haxeClass))
+              .inSmartMode(project)
+              .executeSynchronously();
+    } catch (ProcessCanceledException processCanceledException) {
+      throw processCanceledException;
+    } catch (IllegalStateException stateException) {
+      log.warn("Failed to execute in smartMode", stateException);
+      throw new ProcessCanceledException();
     }
-
-    return dumbService.runReadActionInSmartMode(() -> _getItemsByQNameIncludingSubChildren(haxeClass));
   }
 
   private static @NotNull Collection<HaxeClass> _getItemsByQNameFirstLevelChildrenOnly(HaxeClass haxeClass, Project project) {

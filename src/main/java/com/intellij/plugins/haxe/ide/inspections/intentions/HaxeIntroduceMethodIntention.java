@@ -5,6 +5,8 @@ import com.intellij.codeInspection.util.IntentionName;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
 import com.intellij.plugins.haxe.lang.psi.*;
+import com.intellij.plugins.haxe.model.HaxeMethodModel;
+import com.intellij.plugins.haxe.model.HaxeParameterModel;
 import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluator;
 import com.intellij.plugins.haxe.model.type.ResultHolder;
 import com.intellij.plugins.haxe.model.type.SpecificHaxeClassReference;
@@ -14,13 +16,12 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.SmartPsiElementPointer;
 import com.intellij.psi.codeStyle.CodeStyleManager;
-import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
+
+import static com.intellij.plugins.haxe.ide.inspections.intentions.HaxeIntroduceUtil.findInsertAfterElementForMethod;
+import static com.intellij.plugins.haxe.ide.inspections.intentions.HaxeIntroduceUtil.findTypesRequiringImportsForMethodAndAddToFile;
 
 public class HaxeIntroduceMethodIntention
   extends HaxeUnresolvedSymbolIntentionBase<HaxeCallExpression>
@@ -49,30 +50,50 @@ public class HaxeIntroduceMethodIntention
     return  aClass == null ? null : aClass.getQualifiedName();
   }
 
+  @Override
+  protected PsiElement getTargetPsi() {
+    return findInsertAfterElementForMethod(myPsiElementPointer.getElement(), myPsiTargetPointer.getElement(),false);
+  }
 
   @Override
   protected PsiFile perform(@NotNull Project project, @NotNull PsiElement element, @NotNull Editor editor, boolean preview) {
-    PsiElement anchor = findInsertBeforeElement(element, preview);
+    PsiElement anchor = findInsertAfterElementForMethod(element, myPsiTargetPointer.getElement(), preview);
+
 
     PsiElement methodDeclaration = generateDeclaration(project).copy();
-    anchor.getParent().addBefore(methodDeclaration, anchor);
-    anchor.getParent().addBefore(createNewLine(project), anchor);
+    methodDeclaration = anchor.getParent().addAfter(methodDeclaration, anchor);
+    anchor.getParent().addBefore(createNewLine(project), methodDeclaration);
 
-    CodeStyleManager.getInstance(project).reformat(methodDeclaration);
+    methodDeclaration = CodeStyleManager.getInstance(project).reformat(methodDeclaration);
+    if(!preview) {
+      if(methodDeclaration instanceof HaxeMethodDeclaration declaration) {
+        HaxeMethodModel newModel = declaration.getModel();
+        List<HaxeParameterModel> parameters = newModel.getParameters();
+        ResultHolder returnType = newModel.getReturnType(null);
+
+        ResultHolder knownReturnType = guessElementType(myPsiElementPointer.getElement());
+        if(knownReturnType.isDynamic() || knownReturnType.isUnknown()) knownReturnType = null;
+        findTypesRequiringImportsForMethodAndAddToFile(parameters, getKnownParameterTypeList(), returnType, knownReturnType, anchor.getContainingFile());
+      }
+    }
     return anchor.getContainingFile();
   }
 
 
+
+
   private PsiElement generateDeclaration(@NotNull Project project) {
     String returnType = guessReturnElementType();
+    String typeTag = returnType.equals("Dynamic") ? "" : ":"+ returnType;
     String returnStatement = determineReturnStatement(returnType);
     String optionalStaticKeyword = needsToBeStatic() ? "static" : "";
+    String privateKeyword = needsToBePublic() ? "public" : "private";
     String function = """
-      private %s function %s (%s):%s {
+      %s %s function %s (%s)%s {
         %s
       }
       """
-      .formatted(optionalStaticKeyword, methodName, generateParameterList(), returnType, returnStatement);
+      .formatted(privateKeyword, optionalStaticKeyword, methodName, generateParameterList(), typeTag, returnStatement);
 
     return HaxeElementGenerator.createMethodDeclaration(project, function);
   }
@@ -88,7 +109,22 @@ public class HaxeIntroduceMethodIntention
   private String guessReturnElementType() {
     HaxeCallExpression element = myPsiElementPointer.getElement();
     if (element.getParent() instanceof  HaxeBlockStatement) return SpecificHaxeClassReference.VOID;
-    return guessElementType();
+    return guessElementTypeText();
+  }
+
+  private List<ResultHolder> getKnownParameterTypeList() {
+    HaxeCallExpression element = myPsiElementPointer.getElement();
+    if(element == null) return List.of();
+    HaxeCallExpressionList expressionList = element.getExpressionList();
+    List<ResultHolder>  parameterTypes = new ArrayList<>();
+    if (expressionList!= null) {
+      @NotNull List<HaxeExpression> list = expressionList.getExpressionList();
+        for (HaxeExpression expression : list) {
+            ResultHolder type = HaxeExpressionEvaluator.evaluate(expression, null).result;
+            parameterTypes.add(type);
+        }
+    }
+    return parameterTypes;
   }
 
   private String generateParameterList() {
@@ -120,22 +156,4 @@ public class HaxeIntroduceMethodIntention
     }
     return builder.toString();
   }
-
-
-  private @NotNull PsiElement findInsertBeforeElement(@NotNull PsiElement startElement, boolean readOnly) {
-    HaxeClass aClass = myPsiTargetPointer.getElement();
-    if (aClass != null) {
-      if (readOnly) aClass = copyFileAndReturnClonedPsiElement(aClass);
-
-      List<HaxeMethod> methodList = aClass.getHaxeMethodsSelf(null);
-      if (!methodList.isEmpty()) {
-        return methodList.get(methodList.size() - 1);
-      }
-      if (aClass.getRBrace() != null) return aClass.getRBrace();
-    }
-    HaxeModule module = PsiTreeUtil.getParentOfType(startElement, HaxeModule.class);
-    return module.getLastChild();
-  }
-
-
 }

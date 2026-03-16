@@ -14,7 +14,7 @@
 * Changed: Modify the import sorting function. Now, the import statements within the conditional macro will be ignored and will not be placed in the sort.
 * Changed: Display the name of the method in the stack frame.
 * Changed: Add support for sticky lines.
-* Changed: Allow for jumps between implementations of interface properties. 
+* Changed: Allow for jumps between implementations of interface properties.
 * Added: The delimiter ":" is allowed to be used for Symbol queries.
 * Fixed: Unelicited temporary breakpoints.
 * Fixed: Adjust HaxeReadWriteAccessDetector order as entry points.
@@ -66,13 +66,106 @@
 
 * Changed: add support for HXCPP driven by Debug Adapter Protocol (DAP) for debugging.
 
+## 1.7.10
+* Added: Initial support for `@:overload` on methods and constructors.
+* Bugfix: Fixed issue where capture variables would show the wrong type (#1233)
+* Improvement: Completion suggestions for built-in metadata should now work better and show more detailed docs.
+* Improvement: Added imports and using from `import.hx` to completion suggestions (#1234)
+* Improvement: Support for numeric separators (#1232) 
+* Improvement: Completion for function `bind` and single character string `code` (#1231)
+* Fixed: Incorrect missing return statement annotations on switch statements with capture variables
+* Fixed: Incorrect cannot assign annotation for object literals with functions to typedef types.
+
+## 1.7.9
+* Changed: Allow arbitrary amount of typeParameters when `@:genericBuild` macros are used in conjugation with TypeParameter named "Rest"
+* Bugfix: Fixed incorrect annotation on typeParameters when mixing TypeParameters with and without defaults
+* Bugfix: Fixed issue where completion suggestions would not include suggestions for imports in import.hx
+
+## 1.7.8
+* Bugfix: Fixed issue where numeric operators would incorrectly display an error for platform specific numeric types  (#1228)
+* Added: Weak warning when assigning `null` to types annotated with @:notNull  
+
+## 1.7.7
+* Added: Intellij 2025.3 support
+* Added: Declaration and expression move up/down handers
+* Fixed: Parameter info and inlays where incorrectly showing first parameter for extension methods and macro member methods 
+
+## 1.7.6
+* Added: Line marker for recursions 
+* Added: Support for showing breadcrumbs 
+* bugfix: Intellij 2025.2 plugin code changes broke debugging, it should now work again. 
+* Bugfix: Find usage would not show write access (#1226 - Fix by LviatYi)
+
+## 1.7.5
+* Added: Initial support for intellij 2025.2.
+* Added: Detecting code references in console output and making them navigatable.
+* Added: Adding quickfixes for missing constructor, missing Super call and introduce Enum value. 
+* Bugfix: Private constructors would in some cases show as unused when not.
+* Bugfix: Fixed issue where recursion guard would cause resolve to fail. (#1222)
+* Changed: shadowing static methods changed from warning to weak warning.
+* Improvement: misc minor bugfixes
+
+## 1.7.4
+* Added: Initial support for new Haxe 5 preview features (private getters & setters, binary literals) 
+* Added: Method quickfixes for when unresolved symbol has expected type is abstract with @:callable
+* Added: Console output filter to detect code references from haxe compiler and make them navigatable
+* Improvement: Copy-paste processor now also adds imports for methods and extension methods.
+* Improvement: Expanding support for extern inline overload functions to constructors and function references (#1216)
+* Fixed: FunctionTypes would cause NPE if Haxe SDK was not configured.
+
+## 1.7.3
+* Added: Support for "in" operator expressions and overloads (#1220) 
+* Bugfix: Fixed issue where resolver would incorrectly use enumValue as type (#1219) 
+* Bugfix: Fixed issue where child classes could access static members from parent class without import statement (#1218)
+* Bugfix: Fixed issue where haxelib version detection would end up with empty string as version number (#1217)
+* Added: Better support for extern inline overload functions (#1216)
+* Bugfix: Allow redefining of abstract methods if extending class is abstract(#1191)
+* Bugfix: Plugin would fail to load dev versions of haxelibs if their libpath contained white-spaces.
+* Added: quickfix for converting string concatenation to string interpolation  
+* Changed: quickfix for switching between quote types now escapes character is if necessary.
+* Changed: Unresolved symbol highlighting of callExpression now only highlight the identifier (quickfix is still available in the entire expression)
+
+
+## 1.7.2
+* Hotfix: Make sure we only add one import statement per type when performing copy-paste (Fix for #1215
+* 
+## 1.7.1
+* Bugfix: incorrect `Incompatible type: missing member` annotation for StructInit (#1214)
+* Bugfix: Correctly checking field references in @:access meta
+* Bugfix: Allow private access for sub-packages when @:allow referees to a package
+* Fixed: resolver would not find getters/setters when macro identifiers where used
+* Added: check for parameter defaults (should be const expressions).
+* Added: Folding for multiple single line comments.
+* improvement: Avoid unnecessary reparsing of functionLiterals.
+* Changed: Lime is added as a default external library when project is configured as lime/openFl project.
+* Changed: hxcpp debugger no longer require intellij ultimate 
+
+
+## 1.7.0
+* Added: Access control annotation checking keywords(static private, public) and annotations (`@:access` `@:privateAccess`, `@:allow`)
+* Added: unused definition annotations (local functions, fields and methods).
+* Added: return statement annotations (checks return type compatibility).
+* Added: Add missing imports when generating methods (constructor, override, implement) 
+* Added: Support for patterns syntax in EnumValue.match calls
+* Added: Automatically adding missing imports when performing copy & past inside intellij. 
+* Fixed: Generated overrides now include optional and defaults in parameter lists.
+* Fixed: safe cast expression followed by ArrayAccess expression would give parser error.
+* Bugfix: Introduce variable action in switch-case block would generate variable above switch statement instead of inside the block.
+* Improvement: Better type guessing for introduce member quickfixes + adding missing imports when generating for differentFile/class.
+* Misc: Tweaks to avoid slow operation warning when creating/showing large Class hierarchies 
+* Misc: Better and more accurate logic for resolving modules and static extensions
+
+
+## 1.6.8
+*  Support for IntelliJ 2024.x is dropped due to breaking changes in refactoring API in IntelliJ 2025.
+
 ## 1.6.7
 * Fixed: Issue parsing postfix expressions after arrayAccess and callExpressions.
-* improvement: more accurate logic determining if `case` expression is captureVariable or references.
+* improvement: more accurate logic determining if `case` expression is captureVariable or references. 
 * improvement: Better support for operator overloads
 
 ## 1.6.6
-* Bugfix: Fixed issue where Class references where treated as instance references in new expressions
+* Bugfix: Fixed issue where Class references where treated as instance references in new expressions 
 * Fixed: Extension methods from `EnumValueTools` and `EnumTools` are now resolved without using imports (same as the compiler)
 * Fixed: TypeParameters are now kept when using `bind()` on method references.
 * Fixed: Incorrect caching of members resolved from typedefs
@@ -84,9 +177,9 @@ Known issues :
 
 ## 1.6.5
 * Added: Cppia target for OpenFL/Lime builds
-* Fixed: Direct cast to Abstract with typeParameters would fail for typeParameters with constraints.
+* Fixed: Direct cast to Abstract with typeParameters would fail for typeParameters with constraints.  
 * Fixed: parser regression (inline callExpressions)
-* Improvement: misc fixes and better text formating for reader mode/ inline doc render
+* Improvement: misc fixes and better text formating for reader mode/ inline doc render 
 
 ## 1.6.4
 * Improvement: Reworked documentation rendering and added support for reader mode.

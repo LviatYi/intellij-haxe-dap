@@ -37,7 +37,7 @@ public class HaxeFileModel implements HaxeExposableModel {
 
   private final HaxeFile file;
 
-  protected HaxeFileModel(@NotNull HaxeFile file) {
+  public HaxeFileModel(@NotNull HaxeFile file) {
     this.file = file;
   }
 
@@ -47,7 +47,7 @@ public class HaxeFileModel implements HaxeExposableModel {
 
     final PsiFile file = element instanceof PsiFile  psiFile ? psiFile: element.getContainingFile();
     if (file instanceof HaxeFile haxeFile) {
-      return CachedValuesManager.getCachedValue(haxeFile, () -> new CachedValueProvider.Result<>(new HaxeFileModel(haxeFile), haxeFile));
+      return haxeFile.getModel();
     }
     return null;
   }
@@ -279,13 +279,13 @@ public class HaxeFileModel implements HaxeExposableModel {
       if (className == null) return this;
 
       HaxeModel member = findMember(className, memberName);
-      if (member == null && info.fileName != null) {
+      if (member == null && info.moduleName != null) {
         // workaround to handle issue where member name values get "shifted" to the left because they look a class (starts uppercase)
         // (className becomes filename, memberName becomes className)
         // while packages should start lowercase and classes should start with uppercase,
         // it's not obvious whether  `import somePackage.SomeName.SomeOtherName;` is an import of a non-module named class in a module or a static member in a class
         // so we check  for "shifted" values
-        member = findMember(info.fileName, className);
+        member = findMember(info.moduleName, className);
       }
       if (member != null && info.parameter != null) {
         if (member instanceof HaxeMethodModel methodModel) {
@@ -314,7 +314,7 @@ public class HaxeFileModel implements HaxeExposableModel {
   }
 
   protected boolean isReferencingCurrentFile(FullyQualifiedInfo info) {
-    return info.fileName != null && info.fileName.equals(getName());
+    return info.moduleName != null && info.moduleName.equals(getName());
   }
 
   private String detectPackageName() {

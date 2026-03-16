@@ -191,7 +191,8 @@ public class SpecificFunctionReference extends SpecificTypeReference {
       for (int i = 0; i < arguments.size(); i++) {
         HaxeFunctionArgument arg = arguments.get(i);
         ResultHolder result = determineType(func, resolver, arg.getFunctionType(), arg.getTypeOrAnonymous());
-        args.add(new HaxeArgument(arg, i, null != arg.getOptionalMark(), null != arg.getRestArgumentType(), result, arg.getName()));
+        String name = arg.getComponentName() != null ? arg.getComponentName().getText() : null;
+        args.add(new HaxeArgument(arg, i, null != arg.getOptionalMark(), null != arg.getRestArgumentType(), result, name));
       }
     }
 
@@ -213,7 +214,10 @@ public class SpecificFunctionReference extends SpecificTypeReference {
       return result;
     }
     if (null != fnType) {
-      return create(new HaxeSpecificFunction(fnType, resolver.getSpecialization(context))).createHolder();
+      HaxeSpecificFunction haxeSpecificFunction = HaxeSpecificFunction.tryCreate(fnType, resolver.getSpecialization(context));
+      if(haxeSpecificFunction != null) {
+        return create(haxeSpecificFunction).createHolder();
+      }
     }
     return SpecificTypeReference.getUnknown(context).createHolder();
   }

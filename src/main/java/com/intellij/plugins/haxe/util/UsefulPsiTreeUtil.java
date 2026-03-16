@@ -26,14 +26,11 @@ import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.plugins.haxe.HaxeFileType;
-import com.intellij.plugins.haxe.lang.lexer.HaxeElementType;
 import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypeSets;
-import com.intellij.plugins.haxe.lang.psi.HaxeClass;
-import com.intellij.plugins.haxe.lang.psi.HaxeObjectLiteral;
-import com.intellij.plugins.haxe.lang.psi.HaxeParenthesizedExpression;
-import com.intellij.plugins.haxe.lang.psi.HaxePsiCompositeElement;
-import com.intellij.plugins.haxe.lang.psi.impl.HaxePsiDocComment;
+import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.lang.util.HaxeAstUtil;
+import com.intellij.plugins.haxe.model.type.HaxeTypeResolver;
+import com.intellij.plugins.haxe.model.type.ResultHolder;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.PsiTreeUtil;
@@ -110,12 +107,30 @@ public class UsefulPsiTreeUtil {
     }
     return result;
   }
+  @Nullable
+  public static ASTNode getPrevSiblingSkipWhiteSpaces(@Nullable ASTNode sibling) {
+    if (sibling == null) return null;
+    ASTNode result = sibling.getTreePrev();
+    while (result != null && isWhitespace(result.getPsi())) {
+      result = result.getTreePrev();
+    }
+    return result;
+  }
 
   @Nullable
   public static ASTNode getNextSiblingSkipWhiteSpacesAndComments(@Nullable ASTNode sibling) {
     if (sibling == null) return null;
     ASTNode result = sibling.getTreeNext();
     while (result != null && isWhitespaceOrComment(result.getPsi())) {
+      result = result.getTreeNext();
+    }
+    return result;
+  }
+  @Nullable
+  public static ASTNode getNextSiblingSkipWhiteSpaces(@Nullable ASTNode sibling) {
+    if (sibling == null) return null;
+    ASTNode result = sibling.getTreeNext();
+    while (result != null && isWhitespace(result.getPsi())) {
       result = result.getTreeNext();
     }
     return result;
@@ -142,9 +157,20 @@ public class UsefulPsiTreeUtil {
   public static boolean isWhitespaceOrComment(ASTNode node) {
     return isWhitespaceOrComment(node.getPsi());
   }
+  public static boolean isHaxePsiToken(PsiElement element) {
+    return element instanceof HaxePsiToken;
+  }
 
   public static boolean isWhitespaceOrComment(PsiElement element) {
     return element instanceof PsiWhiteSpace || element instanceof PsiComment;
+  }
+
+  public static boolean isComment(PsiElement element) {
+    return  element instanceof PsiComment;
+  }
+
+  public static boolean isWhitespace(PsiElement element) {
+    return element instanceof PsiWhiteSpace;
   }
   public static boolean isWhitespaceOrCommentButNotDocs(PsiElement element) {
     return element instanceof PsiWhiteSpace
@@ -360,6 +386,15 @@ public class UsefulPsiTreeUtil {
     }
     return sibling;
   }
+  @Nullable
+  public static PsiElement getPrevSiblingSkipWhiteSpacesAndComments(@Nullable PsiElement element) {
+    if (element == null) return null;
+    PsiElement sibling = element.getPrevSibling();
+    while (sibling != null && isWhitespaceOrComment(sibling)) {
+      sibling = sibling.getPrevSibling();
+    }
+    return sibling;
+  }
 
   @Nullable
   public static PsiElement skipParenthesizedExprUp(@Nullable PsiElement parent) {
@@ -367,5 +402,29 @@ public class UsefulPsiTreeUtil {
       parent = parent.getParent();
     }
     return parent;
+  }
+
+  @Nullable
+  public static ResultHolder getExpectedTypeForReturn(HaxeReturnStatement returnStatement) {
+    HaxePsiCompositeElement compositeElement = PsiTreeUtil.getParentOfType(returnStatement, HaxeMethod.class, HaxeFunctionLiteral.class);
+    HaxeTypeTag typeTag = getTypeTagForMethodOrFunction(compositeElement);
+    if(typeTag != null) {
+      return HaxeTypeResolver.getTypeFromTypeTag(typeTag, returnStatement);
+    }
+    return null;
+
+  }
+  @Nullable
+  public static  HaxeTypeTag getTypeTagForMethodOrFunction(HaxePsiCompositeElement element) {
+    if(element instanceof HaxeMethodDeclaration declaration) {
+      return declaration.getTypeTag();
+    }
+    if(element instanceof HaxeLocalFunctionDeclaration declaration) {
+      return declaration.getTypeTag();
+    }
+    if(element instanceof HaxeFunctionLiteral functionLiteral) {
+      return functionLiteral.getTypeTag();
+    }
+    return null;
   }
 }

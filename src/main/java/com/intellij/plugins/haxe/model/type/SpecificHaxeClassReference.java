@@ -104,6 +104,18 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
     return new SpecificHaxeClassReference(clazz,  specifics != null ?  specifics : ResultHolder.EMPTY, constantValue, null, clazz.elementContext);
   }
 
+  public static SpecificTypeReference tryUnwrapNullType(SpecificTypeReference left) {
+    if(left instanceof  SpecificHaxeClassReference classReference) {
+      if (classReference.isNullType()) {
+        if (classReference.getSpecifics().length == 1) {
+          ResultHolder specific = classReference.getSpecifics()[0];
+          if(!specific.isUnknown()) return specific.getType();
+        }
+      }
+    }
+    return left;
+  }
+
   @Nullable
   public HaxeClass getHaxeClass() {
     if(clazz == null || !clazz.isValid()) {
@@ -125,7 +137,7 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
     final HaxeClass aClass = getHaxeClass();
     return (aClass != null) ? aClass.getModel() : null;
   }
-  @Nullable
+
   public boolean missingClassModel() {
     return getHaxeClassModel() == null;
   }
@@ -188,7 +200,8 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
     }
 
 
-    StringBuilder out = new StringBuilder(this.getHaxeClassReference().getName());
+    String name = Optional.ofNullable(this.getHaxeClassReference().getName()).orElse("<unnamed class>");
+    StringBuilder out = new StringBuilder(name);
       if (!(this instanceof  SpecificHaxeAnonymousReference)) {
         ResultHolder[] specifics = getSpecifics();
         if (specifics.length > 0) {
@@ -301,9 +314,19 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
 
         list.forEach(resolver::addAll);
       } else {
-        List<HaxeGenericParamModel> params = model.getGenericParams();
-        for (int n = 0; n < params.size(); n++) {
-          HaxeGenericParamModel paramModel = params.get(n);
+          List<HaxeGenericParamModel> params = model.getGenericParams();
+          boolean hasTypeParamRest = model.isGenericBuildWithRestTypeParam();
+          int paramSize = params.size();
+          int count = paramSize;
+
+          if (hasTypeParamRest) {
+              count = this.getSpecifics().length;
+          }
+
+        boolean hasReachedRestTypeParam = false;
+        for (int n = 0; n < count; n++) {
+            int parameterIndex = Math.min(n, paramSize - 1);
+            HaxeGenericParamModel paramModel = params.get(parameterIndex);
           boolean enoughParams = n < getSpecifics().length;
           ResultHolder specific = null;
           if (enoughParams) {
@@ -320,8 +343,16 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
               specific = paramModel.getInstanceType();
             }
           }
-          resolver.add(paramModel.getTypeParameter(), specific);
-          resolver.addConstraint(paramModel.getTypeParameter(), specific);
+          if(!hasReachedRestTypeParam && "Rest".equals(paramModel.getName())) {
+              hasReachedRestTypeParam = true;
+          }
+          if (hasTypeParamRest && hasReachedRestTypeParam) {
+              resolver.add(paramModel.getTypeParameter(), specific, n);
+              resolver.addConstraint(paramModel.getTypeParameter(), specific, n);
+          }else {
+              resolver.add(paramModel.getTypeParameter(), specific);
+              resolver.addConstraint(paramModel.getTypeParameter(), specific);
+          }
         }
       }
     }
@@ -359,32 +390,45 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
         }
       }
     }
-    HaxeNamedComponent namedComponent = aClass.findHaxeMethodByName(name, localResolver);
-    if (namedComponent  instanceof HaxeMethod method) {
-      if (context.root == method) return null;
-      if(aClass.isEnum()) {
+    List<HaxeNamedComponent> methods = aClass.findHaxeMethodByName(name, localResolver);
+      if (!methods.isEmpty()) {
+        if (methods.size() == 1 && methods.getFirst() instanceof HaxeMethod method) {
+          if (context.root == method) return null;
+          if (aClass.isEnum()) {
 
-        //Hack/Workaround: EnumValues with empty constructors should be treated as Const values and not constructors
-        //this workaround makes sure we return the Enum type and not the constructor.
-        boolean emptyEnumConstructor = method.getParameterList().isEmpty();
-        if(emptyEnumConstructor) {
-          HaxeClassModel model = aClass.getModel();
-            return model.getInstanceType();
+            //Hack/Workaround: EnumValues with empty constructors should be treated as Const values and not constructors
+            //this workaround makes sure we return the Enum type and not the constructor.
+            boolean emptyEnumConstructor = method.getParameterList().isEmpty();
+            if (emptyEnumConstructor) {
+              HaxeClassModel model = aClass.getModel();
+              return model.getInstanceType();
+            }
+          }
+
+          if (isMacroMethod(method)) {
+            // if macro method replace Expr / ExprOf types
+            ResultHolder functionType = HaxeTypeResolver.getMethodFunctionType(method, localResolver.withoutUnknowns());
+            return HaxeMacroUtil.resolveMacroTypesForFunction(functionType);
+          }
+          // if inherited method map resolver to match declaring class
+          if (method.getContainingClass() instanceof HaxeClass methodTypeClassType) {
+            localResolver = localResolver.translateFromTo(aClass, methodTypeClassType);
+          }
+
+          return HaxeTypeResolver.getMethodFunctionType(method, localResolver);
+        }else if (methods.size()>1){
+          for (HaxeNamedComponent method : methods) {
+            if(method instanceof HaxeMethod haxeMethod) {
+              ResultHolder assignHint = resolver.getAssignHint();
+              ResultHolder functionType = haxeMethod.getModel().getFunctionType(resolver).createHolder();
+              if(functionType.canAssign(assignHint)) {
+                return functionType;
+              }
+            }
+          }
+
         }
       }
-
-        if (isMacroMethod(method)) {
-          // if macro method replace Expr / ExprOf types
-          ResultHolder functionType = HaxeTypeResolver.getMethodFunctionType(method, localResolver.withoutUnknowns());
-          return HaxeMacroUtil.resolveMacroTypesForFunction(functionType);
-        }
-        // if inherited method map resolver to match declaring class
-        if (method.getContainingClass() instanceof HaxeClass methodTypeClassType) {
-          localResolver = localResolver.translateFromTo(aClass, methodTypeClassType);
-        }
-
-        return HaxeTypeResolver.getMethodFunctionType(method, localResolver);
-    }
 
     HaxeNamedComponent field = aClass.findHaxeFieldByName(name, localResolver);
     if (field instanceof HaxePsiField haxePsiField) {
@@ -418,6 +462,22 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
   public SpecificHaxeClassReference tryCastTo(SpecificHaxeClassReference targetClass) {
     if (targetClass == null) return null;
     if(targetClass.isDynamic()) return getDynamic(this.context);
+    //
+    if(this.isNullType()) {
+      SpecificTypeReference unwrapped = this.unwrapNullType();
+      if(unwrapped instanceof SpecificHaxeClassReference classReference) {
+        SpecificHaxeClassReference unwrappedCast = classReference.tryCastTo(targetClass);
+        if(unwrappedCast != null) return unwrappedCast;
+
+      }
+    }
+
+    if(this.isAnonymousType() || this.isObjectLiteral()) {
+      if(this.canAssign(targetClass)){
+        return targetClass;
+      }
+    }
+
     SpecificHaxeClassReference specificHaxeClassReference = tryCastToClass(targetClass);
     if (specificHaxeClassReference == null) {
       specificHaxeClassReference = tryAbstractCast(targetClass);
@@ -427,6 +487,9 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
 
   @Nullable
   public SpecificHaxeClassReference tryCastToClass(SpecificHaxeClassReference targetClass) {
+      return tryCastToClass(targetClass, false);
+  }
+  public SpecificHaxeClassReference tryCastToClass(SpecificHaxeClassReference targetClass, boolean allowExprOf) {
     if (targetClass == null) return null;
     HaxeClass targetHaxeClass = targetClass.getHaxeClass();
     HaxeClass sourceHaxeClass = this.getHaxeClass();
@@ -454,7 +517,19 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
         }
       }
     }
-    return null;
+      //allowing casting to ExprOf<T>, used to map between macro  and no macro code
+      // ex.
+      // macro function test<T>(value: ExprOf<T>): ExprOf<T> {return value;}
+      // var result:String = test("stringValue");
+      if (allowExprOf) {
+          if (targetClass.isExprOf()) {
+              ResultHolder holder = targetClass.createHolder();
+              if (holder.containsUnknownTypeParameters()) {
+                  return HaxeMacroTypeUtil.getExprOf(context, createHolder());
+              }
+          }
+      }
+      return null;
   }
   @Nullable
   public SpecificHaxeClassReference tryAbstractCast(SpecificHaxeClassReference targetClass) {
@@ -979,18 +1054,31 @@ public class SpecificHaxeClassReference extends SpecificTypeReference {
     if (isTypeDef()) {
       HaxeFunctionType type = ((AbstractHaxeTypeDefImpl)getHaxeClassModel().haxeClass).getFunctionType();
       if (type != null) {
-        HaxeSpecificFunction function = new HaxeSpecificFunction(type, getGenericResolver().getSpecialization(this.getElementContext()));
-        typeDefFunction = SpecificFunctionReference.create(function);
-        return typeDefFunction;
+        HaxeSpecificFunction function = HaxeSpecificFunction.tryCreate(type, getGenericResolver().getSpecialization(this.getElementContext()));
+        if(function != null){
+          typeDefFunction = SpecificFunctionReference.create(function);
+          return typeDefFunction;
+        }
       }
     }
     return null;
   }
 
-  public boolean isCoreType() {
+    public boolean isCoreType() {
+        return isCompileTimeMeta("coreType");
+    }
+
+    public boolean isRuntimeValueMeta() {
+        return isCompileTimeMeta("runtimeValue");
+    }
+    public boolean isNotNullMeta() {
+        return isCompileTimeMeta("notNull");
+    }
+
+  public boolean isCompileTimeMeta(String metaName) {
     HaxeMetadataList list = HaxeMetadataUtils.getMetadataList(this.getHaxeClass());
     for (HaxeMeta meta : list) {
-      if (meta.isCompileTimeMeta() && meta.isType("coreType")) {
+      if (meta.isCompileTimeMeta() && meta.isType(metaName)) {
         return true;
       }
     }

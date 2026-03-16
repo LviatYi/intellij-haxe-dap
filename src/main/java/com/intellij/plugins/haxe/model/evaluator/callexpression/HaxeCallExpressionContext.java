@@ -8,6 +8,7 @@ import com.intellij.plugins.haxe.lang.psi.*;
 import com.intellij.plugins.haxe.lang.psi.impl.HaxeTypeParameterDeclaration;
 import com.intellij.plugins.haxe.model.evaluator.assign.AssignExplanation;
 import com.intellij.plugins.haxe.model.evaluator.assign.HaxeAssignEvaluation;
+import com.intellij.plugins.haxe.model.evaluator.assign.HaxeTypeCompatible;
 import com.intellij.plugins.haxe.model.type.*;
 import com.intellij.plugins.haxe.util.UsefulPsiTreeUtil;
 import com.intellij.psi.PsiElement;
@@ -15,16 +16,20 @@ import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.intellij.plugins.haxe.model.evaluator.assign.HaxeTypeCompatible.evaluateAssignToFrom;
-import static com.intellij.plugins.haxe.model.evaluator.assign.HaxeTypeCompatible.evaluateAssignToFromForNewAndCallExpression;
+import static com.intellij.plugins.haxe.model.evaluator.assign.HaxeTypeCompatible.*;
 
 public class HaxeCallExpressionContext {
 
-    private static final RecursionGuard<RecursionKey> canAssignRecursionGuard = RecursionManager.createGuard("canAssignRecursionGuard");
+    private static final RecursionGuard<RecursionKey> callExpressionAssignRecursionGuard = RecursionManager.createGuard("callExpressionAssignRecursionGuard");
+    // enumValue.Match allows patterns and have different rules
+    public boolean isEnumValueMatchCallExpression;
+    public boolean isInEnumValueMatchArgument;
+    public boolean isEnumConstructor;
     public boolean isBindCall;
 
 
@@ -49,10 +54,14 @@ public class HaxeCallExpressionContext {
     @Nullable
     private PsiElement sourceExpression;
 
+    public boolean canCache = true;
     public boolean isConstructor = false;
-    public boolean isMacroFunction = false;
+    public boolean isMacroMethod = false;
+    public boolean isStaticMethod = false;
     public boolean isStaticExtension = false;
-
+    public boolean isMacroMemberMethod() {
+        return isMacroMethod && !isStaticMethod;
+    }
     /**
      *
      * @param argumentList  list of arguments passed to the function/method beeing called
@@ -100,15 +109,26 @@ public class HaxeCallExpressionContext {
         evaluation.callExpressionResolver = new HaxeGenericResolver();
         evaluation.callExpressionResolver.addAll(callExpressionScopeResolver);
 
-        boolean firstArgIsThisReference = isStaticExtension || isMacroFunction;
+        boolean firstArgIsThisReference = isStaticExtension || isMacroMemberMethod();
         boolean hasRestParam = hasRestParameter(parameters);
 
+        List<CallExpressionArgumentModel> argumentsList = new ArrayList<>(arguments); // making a copy since we add callie for extension methods
         int minArgRequired = countRequiredArguments(parameters) - (firstArgIsThisReference ? 1 : 0);
         int maxArgAllowed = hasRestParam && !isBindCall ? Integer.MAX_VALUE : parameters.size() - (firstArgIsThisReference ? 1 : 0);
-        int argumentCount = arguments.size();
+        int argumentCount = argumentsList.size();
 
         boolean hasOptionalParams = parameters.stream().anyMatch(CallExpressionParameterModel::isOptional);
 
+        if(isEnumValueMatchCallExpression) {
+            return EnumValueMatchUtil.evaluateMatchCall(this, evaluation, trackErrors);
+        }
+        if(isEnumConstructor) {
+          if(isInEnumValueMatchArgument) {
+              return EnumValueMatchUtil.evaluatePatterns(this, evaluation, trackErrors);
+          }else {
+              EnumValueMatchUtil.checkPatternMatchingOutsideMatchFunction(this, evaluation,  trackErrors);;
+          }
+        }
 
         // min arg check
         if (argumentCount < minArgRequired && !isBindCall) {
@@ -170,7 +190,7 @@ public class HaxeCallExpressionContext {
             // while it might be a waste to re-evaluate the callie assignability
             // we do it  here because we need to keep track if typeParameters
             // perhaps the logic above can be moved down into the argument/parameter check loop
-            arguments.addFirst(new CallExpressionArgumentModel(callie.context, callie));
+            argumentsList.addFirst(new CallExpressionArgumentModel(callie.context, callie, false));
         }
 
         CallExpressionArgumentModel argumentModel = null;
@@ -183,13 +203,12 @@ public class HaxeCallExpressionContext {
         // loop through all arguments and match them to parameters
         // Note: argument and parameter index  can deviate a lot (optional parameters, rest values, extension method etc)
         while (true) {
-            if (arguments.size() > argumentCounter) {
-                argumentModel = arguments.get(argumentCounter++);
+            if (argumentsList.size() > argumentCounter) {
+                argumentModel = argumentsList.get(argumentCounter++);
             } else {
                 // out of arguments (normal behavior when all arguments have been checked)
                 break;
             }
-
             // if we reach rest parameter then there should not be any parameterModel updates as this is the last one
             if (!reachedRestParameter) {
                 if (parameters.size() > parameterCounter) {
@@ -199,7 +218,9 @@ public class HaxeCallExpressionContext {
                         // if argument is array then this might be a normal parameter and not a rest-parameter
                         SpecificTypeReference typeFromModel = parameterModel.getType();
                         if (HaxeMacroTypeUtil.isMacroVarArgOrRestType(typeFromModel)) {
-                            if (!typeFromModel.canAssign(argumentModel.getType())) {
+                            // strict check here as we want to test if we are dealing with an Array type or type that can be assigned to Array.
+                            // non-strict check would allow Unknown, Dynamic and Expr  to assign and  thus prevent us from setting reachedRestParameter
+                            if (!HaxeTypeCompatible.canAssignToFromReference(typeFromModel, argumentModel.getType(), true)) {
                                 reachedRestParameter = true;
                             }
                         }else {
@@ -231,7 +252,7 @@ public class HaxeCallExpressionContext {
             final SpecificTypeReference finalArgumentType = argumentType;
 
             RecursionKey recursionKey = new RecursionKey(argumentType.getElementContext(), parameterType.getElementContext());
-            assignEvaluation = canAssignRecursionGuard.doPreventingRecursion(recursionKey, true,
+            assignEvaluation = callExpressionAssignRecursionGuard.doPreventingRecursion(recursionKey, true,
                     isConstructor
                             ? () -> evaluateAssignToFromForNewAndCallExpression(finalParameterType.createHolder(), finalArgumentType.createHolder())
                             : () -> evaluateAssignToFrom(finalParameterType.createHolder(), finalArgumentType.createHolder()));
@@ -287,6 +308,9 @@ public class HaxeCallExpressionContext {
         evaluation.setCompleted(true);
         return evaluation;
     }
+
+
+
 
 
 
@@ -346,7 +370,7 @@ public class HaxeCallExpressionContext {
             }
             else if (parameterClassReference.createHolder().containsUnknownTypeParameters()) {
                 if(argumentType instanceof  SpecificHaxeClassReference argumentClassReference) {
-                    SpecificHaxeClassReference downCastedType = argumentClassReference.tryCastToClass(parameterClassReference);
+                    SpecificHaxeClassReference downCastedType = argumentClassReference.tryCastToClass(parameterClassReference, true);
                     if (downCastedType != null) {
                         @NotNull ResultHolder[] parameterSpecifics = parameterClassReference.getSpecifics();
                         @NotNull ResultHolder[] argumentSpecifics = downCastedType.getSpecifics();
@@ -490,7 +514,7 @@ public class HaxeCallExpressionContext {
         return parametersList.getLast().isRest();
     }
 
-    private static int countRequiredArguments(List<CallExpressionParameterModel> parametersList) {
+    public static int countRequiredArguments(List<CallExpressionParameterModel> parametersList) {
         return (int) parametersList.stream()
                 .filter(p -> !p.isOptional() && !p.hasIntiValue() && !p.isRest())
                 .count();
@@ -537,6 +561,12 @@ public class HaxeCallExpressionContext {
                 String message = HaxeBundle.message("haxe.semantic.method.parameter.no.match",
                         argumentType.toPresentationString(true));
                 evaluation.addError(message, expectedRange);
+
+            }else if(isShadowingType(parameterType, argumentType)) {
+                String message = HaxeBundle.message("haxe.semantic.incompatible.type.shadowing",
+                        parameterType.toPresentationString(true),
+                        argumentType.toPresentationString(true));
+                evaluation.addWarning(message, expectedRange);
             }else {
                 String message = HaxeBundle.message("haxe.semantic.method.parameter.mismatch",
                         parameterType.toPresentationString(true),
@@ -549,7 +579,7 @@ public class HaxeCallExpressionContext {
 
 
 
-    private void addToFewArgumentError(HaxeCallExpressionEvaluation evaluation, int minArgRequired) {
+    protected void addToFewArgumentError(HaxeCallExpressionEvaluation evaluation, int minArgRequired) {
         if(isBindCall) return; // ignore missing arguments if bind call (bind has rules handling missing arguments)
         String message = HaxeBundle.message("haxe.semantic.method.parameter.missing", minArgRequired, arguments.size());
         if (sourceExpression instanceof HaxeCallExpression callExpression) {
@@ -584,7 +614,7 @@ public class HaxeCallExpressionContext {
         }
     }
 
-    private void addToManyArgumentError(HaxeCallExpressionEvaluation evaluation, int maxArgAllowed) {
+    protected void addToManyArgumentError(HaxeCallExpressionEvaluation evaluation, int maxArgAllowed) {
         String message = HaxeBundle.message("haxe.semantic.method.parameter.too.many", maxArgAllowed, arguments.size());
         if (sourceExpression instanceof HaxeCallExpression callExpression) {
             HaxeCallExpressionList expressionList = callExpression.getExpressionList();

@@ -1,8 +1,12 @@
 package;
+
+typedef SomeTD = Int;
+
 class TestPostfix {
 
     public function new() {}
 
+    public var td:SomeTD;
     public var int:Int;
     public var floatReadOnly(dynamic, never):Int;
     public var floatReadWrite(never, dynamic):Int;
@@ -15,9 +19,9 @@ class TestPostfix {
     public var nonPhysical(get, set):Int;
 
     // EXPECT: This field cannot be accessed because it is not a real variable
-    function set_nonPhysical(value:Int):Int {return <error descr="This field cannot be accessed because it is not a real variable">nonPhysical++</error>;}
+    function set_nonPhysical(value:Int):Int {return <error descr="This field cannot be accessed because it is not a real variable">nonPhysical</error>++;}
     // EXPECT: This field cannot be accessed because it is not a real variable
-    function get_nonPhysical():Int {return <error descr="This field cannot be accessed because it is not a real variable">nonPhysical++</error>;}
+    function get_nonPhysical():Int {return <error descr="This field cannot be accessed because it is not a real variable">nonPhysical</error>++;}
 
 
     public var intArray:Array<Int>;
@@ -41,6 +45,9 @@ class TestPostfix {
 
         this.int++;
         this.int--;
+
+        td++;
+        td--;
 
         // EXPECT: This expression cannot be accessed for writing
         <error descr="This expression cannot be accessed for writing">floatReadOnly++</error>;
@@ -75,8 +82,8 @@ class TestPostfix {
         <error descr="Invalid assign">this.intArray.pop()++</error>;
         <error descr="Invalid assign">this.intArray.pop()--</error>;
             // EXPECT:This expression cannot be accessed for writing
-        <error descr="This expression cannot be accessed for writing">this.intArray.length++</error>;
-        <error descr="This expression cannot be accessed for writing">this.intArray.length--</error>;
+        <error descr="This expression cannot be accessed for writing">this.intArray.<error descr="Cannot access field length">length</error>++</error>;
+        <error descr="This expression cannot be accessed for writing">this.intArray.<error descr="Cannot access field length">length</error>--</error>;
 
             // EXPECT: { count : Int } should be Int
         <error descr="{count:Int} should be Int">objArray[0]++</error>;

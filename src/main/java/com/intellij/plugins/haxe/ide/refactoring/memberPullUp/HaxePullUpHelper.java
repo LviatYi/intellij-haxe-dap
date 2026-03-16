@@ -275,7 +275,7 @@ public class HaxePullUpHelper implements PullUpHelper<MemberInfo> {
 
       if (!PsiUtil.isLanguageLevel6OrHigher(mySourceClass) && myIsTargetInterface) {
         if (isOriginalMethodAbstract) {
-          for (PsiMethod oMethod : OverridingMethodsSearch.search(method)) {
+          for (PsiMethod oMethod : OverridingMethodsSearch.search(method).findAll()) {
             deleteOverrideAnnotationIfFound(oMethod);
           }
         }
@@ -596,7 +596,7 @@ public class HaxePullUpHelper implements PullUpHelper<MemberInfo> {
       }
       if (doLookup) {
         final PsiReference[] references =
-          ReferencesSearch.search(field, new LocalSearchScope(statement), false).toArray(new PsiReference[0]);
+          ReferencesSearch.search(field, new LocalSearchScope(statement), false).findAll().toArray(new PsiReference[0]);
         if (commonInitializerCandidate == null && references.length > 0) {
           return null;
         }
@@ -711,7 +711,8 @@ public class HaxePullUpHelper implements PullUpHelper<MemberInfo> {
       constructorsToSubConstructors.put(constructor, referencingSubConstructors);
       if (constructor != null) {
         // find references
-        for (PsiReference reference : ReferencesSearch.search(constructor, new LocalSearchScope(mySourceClass), false)) {
+        Collection<PsiReference> references = ReferencesSearch.search(constructor, new LocalSearchScope(mySourceClass), false).findAll();
+        for (PsiReference reference : references) {
           final PsiElement element = reference.getElement();
           if (element != null && "super".equals(element.getText())) {
             PsiMethod parentMethod = PsiTreeUtil.getParentOfType(element, PsiMethod.class);
@@ -880,7 +881,8 @@ public class HaxePullUpHelper implements PullUpHelper<MemberInfo> {
   }
 
   private boolean willBeUsedInSubclass(PsiElement member, PsiClass superclass, PsiClass subclass) {
-    for (PsiReference ref : ReferencesSearch.search(member, new LocalSearchScope(subclass), false)) {
+    Collection<PsiReference> references = ReferencesSearch.search(member, new LocalSearchScope(subclass), false).findAll();
+    for (PsiReference ref : references) {
       PsiElement element = ref.getElement();
       if (!RefactoringHierarchyUtil.willBeInTargetClass(element, myMembersToMove, superclass, false)) {
         return true;
