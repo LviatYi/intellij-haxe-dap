@@ -39,7 +39,9 @@ public class HaxeMethodAnnotator implements Annotator {
 
   @Override
   public void annotate(@NotNull PsiElement element, @NotNull AnnotationHolder holder) {
-      if (element instanceof HaxeMethod haxeMethod) {
+    if(!element.isValid()) return;
+
+    if (element instanceof HaxeMethod haxeMethod) {
         check(haxeMethod, holder);
       }
   }
@@ -312,6 +314,10 @@ public class HaxeMethodAnnotator implements Annotator {
     if(currentMethod.isConstructor()) {
       HaxeClassModel declaringClass = currentMethod.getDeclaringClass();
       if (declaringClass != null) {
+        // extern classes does not need implementation, thats also true when extern classes extend extern classes.
+        if(currentMethod.getBodyPsi() == null && currentMethod.getDeclaringClass().isExtern()) {
+          return;
+        }
         if (declaringClass.isClass()) {
           if(HaxeMacroUtil.isInMacroExpression(superExpression)) return;
           List<HaxeClassReferenceModel> extendingTypes = declaringClass.getExtendingTypes();

@@ -172,6 +172,28 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
     return haxeClass.hasCompileTimeMeta(HaxeMeta.CALLABLE);
   }
 
+    public boolean isGenericBuild() {
+        return haxeClass.hasCompileTimeMeta(HaxeMeta.GENERIC_BUILD);
+    }
+
+    // @:genericBuild macro supports "rest"/vararg typeParameters, so we ignore typeParameters mismatch.
+    // https://haxe.org/manual/macro-generic-build.html
+    // https://gist.github.com/nadako/b086569b9fffb759a1b5
+    public boolean isGenericBuildWithRestTypeParam() {
+      if(reference == null) return false;
+        HaxeClassModel haxeClassModel = reference.getHaxeClassModel();
+        if(haxeClassModel != null && haxeClassModel.isGenericBuild()) {
+            List<HaxeGenericParamModel> genericParams = haxeClassModel.getGenericParams();
+            if (!genericParams.isEmpty()) {
+                HaxeGenericParamModel last = genericParams.getLast();
+                String name = last.haxeClass.getName();
+                return name != null && name.equals("Rest");
+            }
+        }
+        return false;
+    }
+
+
   @Nullable
   public HaxeModifiersModel getModifiers() {
 
@@ -412,7 +434,23 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
     return getMethod("new", resolver);
   }
   public List<HaxeMethodModel> getConstructors(@Nullable HaxeGenericResolver resolver) {
-    return getMethods( resolver).stream().filter(HaxeMethodModel::isConstructor).toList();
+      List<HaxeMethodModel> normalConstructors = getMethods(resolver).stream()
+            .filter(HaxeMethodModel::isConstructor)
+            .toList();
+
+      List<HaxeMethodModel> constructors = new ArrayList<>(normalConstructors);
+
+    for (HaxeMethodModel constructor : normalConstructors) {
+      HaxeMethod method = constructor.getMethod();
+      if (method.hasCompileTimeMetadata(HaxeMetadataCompileTimeMeta.OVERLOAD)) {
+        List<HaxeMethodModel> overloadConstructors = method.getModel().extractOverloadsForMethod().stream()
+                .map(HaxeMethodPsiMixin::getModel)
+                .toList();
+
+        constructors.addAll(overloadConstructors);
+      }
+    }
+    return constructors;
   }
 
   public boolean hasConstructor(@Nullable HaxeGenericResolver resolver) {
@@ -735,6 +773,7 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
 
   private static HaxeGenericParam getGenericParamPsiCached(@NotNull HaxeClass haxeClass) {
     boolean isAnonymous = haxeClass instanceof HaxeAnonymousType;
+    //TODO Should probably rewrite so that changes in parent will invalidate cache
     HaxeGenericParam param = isAnonymous ? getGenericParamFromParent(haxeClass) : haxeClass.getGenericParam();
     return  param;
   }
@@ -1007,4 +1046,12 @@ public class HaxeClassModel implements HaxeCommonMembersModel {
         return false;
     }));
   }
+
+    public HaxeModuleModel getModule() {
+      HaxeModule module = haxeClass.getModule();
+       if(module.getModel() instanceof HaxeModuleModel model) {
+         return model;
+       }
+       return null;
+    }
 }

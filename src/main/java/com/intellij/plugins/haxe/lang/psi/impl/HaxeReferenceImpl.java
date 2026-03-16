@@ -25,19 +25,19 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.plugins.haxe.ide.lookup.HaxeClassLookupElement;
-import com.intellij.plugins.haxe.ide.lookup.HaxeLookupElement;
-import com.intellij.plugins.haxe.ide.lookup.HaxeMemberLookupElement;
-import com.intellij.plugins.haxe.ide.lookup.HaxePackageLookupElement;
+import com.intellij.plugins.haxe.ide.lookup.*;
 import com.intellij.plugins.haxe.ide.refactoring.move.HaxeFileMoveHandler;
 import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypes;
 import com.intellij.plugins.haxe.lang.psi.*;
+import com.intellij.plugins.haxe.lang.psi.fakes.HaxeFakeComponentBindMethod;
+import com.intellij.plugins.haxe.lang.psi.fakes.HaxeFakeComponentStringCode;
 import com.intellij.plugins.haxe.metadata.psi.HaxeMeta;
 import com.intellij.plugins.haxe.metadata.util.HaxeMetadataUtils;
 import com.intellij.plugins.haxe.model.*;
+import com.intellij.plugins.haxe.model.evaluator.HaxeCallExpressionEvaluatorCacheService;
 import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluator;
 import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluatorContext;
-import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionContext;
+import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionContextContainer;
 import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionEvaluation;
 import com.intellij.plugins.haxe.model.evaluator.callexpression.HaxeCallExpressionUtil;
 import com.intellij.plugins.haxe.model.type.*;
@@ -917,10 +917,8 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
           if (classType != null && classType.getHaxeClass() != null) {
             methodModel = classType.getHaxeClass().getModel().getConstructor(null);
             expressionList = newExpression.getExpressionList();
-            HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForConstructorCall(newExpression);
-            if (context != null) {
-              validation = context.evaluate();
-            }
+            HaxeCallExpressionContextContainer contextContainer = HaxeCallExpressionUtil.createContextForConstructorCall(newExpression);
+            validation = contextContainer.evaluateContexts();
           }
         }
         // double parent due to CallExpressionList level
@@ -931,8 +929,7 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
               if (expressionListPsi != null) {
                 expressionList = expressionListPsi.getExpressionList();
                 methodModel = haxeMethod.getModel();
-                HaxeCallExpressionContext context = HaxeCallExpressionUtil.createContextForMethodCall(callExpression, haxeMethod);
-                validation = context.evaluate();
+                validation = HaxeCallExpressionEvaluatorCacheService.cachedHaxeCallExpressionEvaluation(haxeMethod, callExpression);
               }
             }
           }
@@ -1255,6 +1252,7 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
   public Object[] getVariants() {
     final Set<HaxeComponentName> suggestedVariants = new HashSet<>();
     final Set<HaxeComponentName> suggestedVariantsExtensions = new HashSet<>();
+    final Set<HaxeLookupElement> syntheticElements = new HashSet<>();
 
     // if not first in chain
     // foo.bar.baz
@@ -1262,8 +1260,14 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
     HaxeGenericResolver resolver = null;
     final HaxeReference leftReference = HaxeResolveUtil.getLeftReference(this);
     if (leftReference != null) {
+
+      addModuleMemberSuggestions(leftReference, suggestedVariants);
+
       resolver = HaxeGenericResolverUtil.generateResolverFromScopeParents(leftReference);
       ResultHolder leftResult = HaxeTypeResolver.getPsiElementType(leftReference, resolver);
+
+      addSyntheticElementCompletions(syntheticElements,leftResult, leftReference);
+
       if (leftResult.getClassType() != null) {
         SpecificTypeReference reference = leftResult.getClassType().fullyResolveTypeDefAndUnwrapNullTypeReference();
         if(reference instanceof  SpecificHaxeClassReference classReference) {
@@ -1348,8 +1352,82 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
       PsiPackage rootPackage = JavaPsiFacade.getInstance(getElement().getProject()).findPackage("");
       if (rootPackage != null) variants.addAll(HaxePackageLookupElement.convert(rootPackage.getSubPackages()));
     }
-
+    variants.addAll(syntheticElements);
     return variants.toArray();
+  }
+
+  private void addModuleMemberSuggestions(HaxeReference leftReference, Set<HaxeComponentName> suggestedVariants) {
+    JavaResolveResult[] results = leftReference.multiResolve(true);
+    for (JavaResolveResult result : results) {
+      PsiElement element = result.getElement();
+
+      if (element instanceof HaxeModule haxeModule) {
+        HaxeModel model = haxeModule.getModel();
+        if (model instanceof HaxeModuleModel moduleModel) {
+          List<HaxeModel> exposedMembers = moduleModel.getExposedMembers();
+          addModuleMemberSuggestions(suggestedVariants, exposedMembers);
+        }
+      } else if (element instanceof HaxeClass haxeClass) {
+        HaxeClassModel classModel = haxeClass.getModel();
+        HaxeModuleModel moduleModel = classModel.getModule();
+        String moduleName = moduleModel.getName();
+        if (leftReference.textMatches(moduleName)) {
+          if (moduleName.equals(classModel.getName())) {
+            List<HaxeModel> exposedMembers = moduleModel.getExposedMembers();
+            addModuleMemberSuggestions(suggestedVariants, exposedMembers);
+          }
+        }
+      }
+    }
+  }
+
+  private void addModuleMemberSuggestions(Set<HaxeComponentName> suggestedVariants, List<HaxeModel> exposedMembers) {
+      for (HaxeModel exposedMember : exposedMembers) {
+
+        PsiElement base = exposedMember.getBasePsi();
+        if(base instanceof HaxeModuleFieldDeclaration fieldDeclaration) {
+          suggestedVariants.add(fieldDeclaration.getComponentName());
+        }
+        else if(base instanceof HaxeModuleMethodDeclaration methodDeclaration) {
+          suggestedVariants.add(methodDeclaration.getComponentName());
+        }
+      }
+
+    }
+
+  private void addSyntheticElementCompletions(Set<HaxeLookupElement> syntheticElements, ResultHolder type, HaxeReference reference) {
+    if(type.isFunctionType()) {
+      SpecificFunctionReference functionType = type.getFunctionType();
+      addBindSuggestion(syntheticElements, reference,  functionType);
+    }
+    if(reference instanceof HaxeStringLiteralExpression stringLiteral) {
+      if(stringLiteral.getTextLength() == 3) { // 2x quotes + single char
+        addStringCodeSuggestion(syntheticElements);
+      }
+    }
+  }
+
+  private void addBindSuggestion(Set<HaxeLookupElement> lookupElements, HaxeReference reference, @NotNull SpecificFunctionReference functionReference) {
+
+      PsiElement elementContext = functionReference.getElementContext();
+      if(elementContext instanceof HaxeMethodDeclaration method) {
+        HaxeComponentName componentName = method.getComponentName();
+        HaxeIdentifier identifier = componentName.getIdentifier();
+        HaxeFakeComponentBindMethod bind = new HaxeFakeComponentBindMethod(identifier, method);
+        lookupElements.add(HaxeSynteticLookupElements.bind(bind));
+      }else {
+        HaxeIdentifier identifier = PsiTreeUtil.getChildOfType(this, HaxeIdentifier.class);
+        if(reference.resolve() instanceof HaxeNamedComponent component) {
+          HaxeFakeComponentBindMethod bind = new HaxeFakeComponentBindMethod(identifier, component);
+          lookupElements.add(HaxeSynteticLookupElements.bind(bind));
+        }
+      }
+    }
+
+  private void addStringCodeSuggestion(Set<HaxeLookupElement> lookupElements) {
+    HaxeIdentifier identifier = PsiTreeUtil.getChildOfType(this, HaxeIdentifier.class);
+    HaxeFakeComponentStringCode bind = new HaxeFakeComponentStringCode(identifier);
+    lookupElements.add(HaxeSynteticLookupElements.code(bind));
   }
 
   private boolean isInUsingStatement() {
@@ -1430,14 +1508,26 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
                                        HaxeReferenceImpl reference) {
 
     if (ourClass == null) return;
+    HaxeFileModel haxeFileModel = HaxeFileModel.fromElement(reference);
+    if(haxeFileModel != null) {
 
-    HaxeFileModel.fromElement(reference).getUsingModels().stream()
-      .flatMap(model -> model.getExtensionMethods(ourClass, reference).stream())
-      .map(HaxeMemberModel::getNamePsi)
-      .forEach(name -> {
-        variants.add(name);
-        variantsWithExtension.add(name);
-      });
+      List<HaxeUsingModel> importHxUsingModels = findImportHxFileUsingModels(haxeFileModel);
+      importHxUsingModels.stream()
+              .flatMap(model -> model.getExtensionMethods(ourClass, reference).stream())
+              .map(HaxeMemberModel::getNamePsi)
+              .forEach(name -> {
+                variants.add(name);
+                variantsWithExtension.add(name);
+              });
+
+      haxeFileModel.getUsingModels().stream()
+              .flatMap(model -> model.getExtensionMethods(ourClass, reference).stream())
+              .map(HaxeMemberModel::getNamePsi)
+              .forEach(name -> {
+                variants.add(name);
+                variantsWithExtension.add(name);
+              });
+    }
 
     List<HaxeMethodModel> extensionMethodsFromMeta = ourClass.getModel().getExtensionMethodsFromMeta();
     extensionMethodsFromMeta.stream()
@@ -1448,6 +1538,15 @@ abstract public class HaxeReferenceImpl extends HaxeExpressionImpl implements Ha
       });
 
 
+  }
+
+  private static  @NotNull List<HaxeUsingModel> findImportHxFileUsingModels(HaxeFileModel haxeFileModel) {
+    final List<HaxeUsingModel> usingModels = new ArrayList<>();
+    HaxeResolveUtil.walkDirectoryImports(haxeFileModel, (importModel) ->{
+      usingModels.addAll(importModel.getUsingModels());
+      return true;
+    });
+    return usingModels;
   }
 
   private static void addClassVariants(Set<HaxeComponentName> suggestedVariants, @Nullable HaxeClass haxeClass, boolean filterByAccess,

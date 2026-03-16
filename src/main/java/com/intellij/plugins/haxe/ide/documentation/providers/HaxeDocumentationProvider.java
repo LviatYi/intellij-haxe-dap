@@ -1,0 +1,547 @@
+/*
+ * Copyright 2000-2013 JetBrains s.r.o.
+ * Copyright 2014-2014 AS3Boyan
+ * Copyright 2014-2014 Elias Ku
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.intellij.plugins.haxe.ide.documentation.providers;
+
+import com.intellij.codeInsight.documentation.DocumentationManagerUtil;
+import com.intellij.icons.AllIcons;
+import com.intellij.lang.documentation.DocumentationProvider;
+import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
+import com.intellij.openapi.util.text.HtmlBuilder;
+import com.intellij.openapi.util.text.HtmlChunk;
+import com.intellij.plugins.haxe.HaxeComponentType;
+import com.intellij.plugins.haxe.ide.documentation.HaxeDocumentationRenderer;
+import com.intellij.plugins.haxe.lang.parser.HaxePsiDocCommentImpl;
+import com.intellij.plugins.haxe.lang.psi.*;
+import com.intellij.plugins.haxe.lang.psi.fakes.HaxeFakePsiElement;
+import com.intellij.plugins.haxe.metadata.HaxeMetadataList;
+import com.intellij.plugins.haxe.metadata.psi.HaxeMeta;
+import com.intellij.plugins.haxe.metadata.psi.HaxeMetadataContent;
+import com.intellij.plugins.haxe.model.*;
+import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluator;
+import com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluatorContext;
+import com.intellij.plugins.haxe.model.type.ResultHolder;
+import com.intellij.plugins.haxe.util.HaxeResolveUtil;
+import com.intellij.psi.*;
+import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.psi.util.PsiTreeUtil;
+import org.jetbrains.annotations.Nls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.awt.*;
+import java.util.Collection;
+import java.util.List;
+import java.util.function.Consumer;
+
+import static com.intellij.plugins.haxe.ide.documentation.HaxeDocumentationSignatureUtil.*;
+import static com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypeSets.DOC_COMMENT;
+import static com.intellij.util.ui.UIUtil.colorToHex;
+
+/**
+ * @author: Fedor.Korotkov
+ */
+public class HaxeDocumentationProvider implements DocumentationProvider {
+
+  /*
+        provides ctrl+hover info
+       */
+  @Override
+  public String getQuickNavigateInfo(PsiElement element, PsiElement originalElement) {
+    HaxeDocumentationRenderer renderer = element.getProject().getService(HaxeDocumentationRenderer.class);
+    HtmlBuilder mainBuilder = new HtmlBuilder();
+
+    HaxeNamedComponent namedComponent = getNamedComponent(element);
+    if (namedComponent != null) {
+      final HaxeComponentType type = namedComponent.getComponentType();
+      if (type == null){
+        resolveTypeAndMakeHeader(mainBuilder, namedComponent);
+        return mainBuilder.toString();
+      }
+      appendDeprecatedInfo(namedComponent, mainBuilder);
+      switch (type) {
+        case CLASS, ABSTRACT, INTERFACE, TYPEDEF, ENUM -> processType(mainBuilder, namedComponent, renderer);
+        case METHOD, FUNCTION -> processMethod(mainBuilder, namedComponent, renderer);
+        case FIELD -> processField(mainBuilder, namedComponent, renderer);
+        case VARIABLE -> processVariable(mainBuilder, namedComponent, renderer);
+        case PARAMETER -> processParameter(mainBuilder, namedComponent, renderer);
+        case TYPE_PARAMETER -> processTypeParameter(mainBuilder, namedComponent, renderer);
+      }
+    }
+    // convert to one liner
+    String result = mainBuilder.toString();
+    result = result.replaceAll("<br/>|<br>", " ");
+    result = result.replaceAll("&#32;", " ");
+
+    return result.isEmpty() ? null : result;
+  }
+
+  @Override
+  public String generateDoc(PsiElement element, PsiElement originalElement) {
+    HtmlBuilder mainBuilder = new HtmlBuilder();
+
+    if (element instanceof HaxeTypeListPart part) {
+      if (part.getTypeOrAnonymous() != null) {
+        HaxeType type = part.getTypeOrAnonymous().getType();
+        if (type != null) {
+          PsiElement resolve = type.getReferenceExpression().resolve();
+          if (resolve != null) {
+            element = resolve;
+          }
+        }
+      }
+    }
+
+    HaxeNamedComponent namedComponent = getNamedComponent(element);
+    if (namedComponent == null) {
+      if(element instanceof  HaxeModule module) {
+        createModuleDocs(mainBuilder, module);
+      }else if (element instanceof HaxeLiteralExpression) {
+        return null; // no need to  show docs for literal expressions
+      }else {
+        HaxeExpressionEvaluatorContext context = new HaxeExpressionEvaluatorContext(element);
+        HaxeExpressionEvaluator.evaluate(element, context, null);
+        makeHeader(mainBuilder, context.result);
+      }
+      return mainBuilder.toString();
+    }
+
+    HaxeDocumentationRenderer renderer = element.getProject().getService(HaxeDocumentationRenderer.class);
+
+    if(namedComponent instanceof HaxeFakePsiElement fakePsiElement) {
+      String docs = fakePsiElement.getDocs();
+      String render = renderer.parseAndRender(docs);
+      mainBuilder.appendRaw(render);
+      return mainBuilder.toString();
+    }
+
+    final HaxeComponentType type = namedComponent.getComponentType();
+    HtmlBuilder definitionBuilder = new HtmlBuilder();
+    //TODO support key-value iterator "vars" , capture vars etc
+    if (type == null) {
+      resolveTypeAndMakeHeader(mainBuilder, namedComponent);
+      return mainBuilder.toString();
+    }
+    appendDeprecatedInfo(namedComponent, mainBuilder);
+    switch (type) {
+      case CLASS, ABSTRACT, INTERFACE, TYPEDEF, ENUM -> processType(definitionBuilder, namedComponent, renderer);
+      case METHOD, FUNCTION -> processMethod(definitionBuilder, namedComponent, renderer);
+      case FIELD -> processField(definitionBuilder, namedComponent, renderer);
+      case VARIABLE -> processVariable(definitionBuilder, namedComponent, renderer);
+      case PARAMETER -> processParameter(definitionBuilder, namedComponent, renderer);
+      case TYPE_PARAMETER -> processTypeParameter(definitionBuilder, namedComponent, renderer);
+    }
+
+    HtmlChunk.Element content = definitionBuilder.wrapWith(HtmlChunk.div().attr("class", "definition"));
+    mainBuilder.append(content);
+    appendDocumentation(namedComponent, renderer, mainBuilder);
+    mainBuilder.br();
+    return mainBuilder.toString();
+  }
+
+    private void appendDeprecatedInfo(HaxeNamedComponent namedComponent, HtmlBuilder mainBuilder) {
+      HaxeMetadataList compileTimeMeta = namedComponent.getCompileTimeMeta(HaxeMeta.DEPRECATED);
+      if(compileTimeMeta!= null && !compileTimeMeta.isEmpty()) {
+        HaxeMeta first = compileTimeMeta.getFirst();
+        Color color = DefaultLanguageHighlighterColors.METADATA.getDefaultAttributes().getForegroundColor();
+        HtmlChunk.Element chunk = HtmlChunk.div().italic().bold()
+                .attr("color", "#" + colorToHex(color))
+                .addText("Deprecated");
+
+        mainBuilder.append(chunk);
+
+        HaxeMetadataContent content = first.getContent();
+        if (content != null && content.getText() != null) {
+          String contentText = content.getText();
+          if ((contentText.startsWith("\"") || contentText.startsWith("'"))
+                  && (contentText.endsWith("\"") || contentText.endsWith("'"))) {
+           String  message = contentText.substring(1, contentText.length() - 1); // drop string quotes
+
+            mainBuilder.br();
+            HtmlChunk.Element messageChunk = HtmlChunk.div()
+                    .attr("color", "#" + colorToHex(color))
+                    .addText(message)
+                    .bold()
+                    .italic();
+            mainBuilder.append(messageChunk);
+          }
+        }
+
+
+
+        mainBuilder.append(HtmlChunk.hr());
+      }
+    }
+
+  private void createModuleDocs(HtmlBuilder mainBuilder, HaxeModule module) {
+    if( module.getModel() instanceof  HaxeModuleModel model) {
+      String qname = model.getPackageName();
+      StringBuilder stringBuilder = new StringBuilder();
+      DocumentationManagerUtil.createHyperlink(stringBuilder, qname, qname, false, true);
+      mainBuilder.append(HtmlChunk.icon("AllIcons.Nodes.Package", AllIcons.Nodes.Package)).nbsp(1);
+      mainBuilder.appendRaw(stringBuilder.toString()).br();
+
+      mainBuilder.appendRaw("Module " + model.getName()).br();
+              //TODO list members with links
+    }
+  }
+
+  @Override
+  public @Nls @Nullable String generateRenderedDoc(@NotNull PsiDocCommentBase comment) {
+    if(comment instanceof  HaxePsiDocCommentImpl haxeDocComment) {
+      HaxeDocumentationRenderer renderer = haxeDocComment.getProject().getService(HaxeDocumentationRenderer.class);
+
+      String rawDocContent = haxeDocComment.getDocsWithoutIndents();
+      HtmlBuilder htmlBuilder = new HtmlBuilder();
+      String rendered = renderer.parseAndRenderDocs(rawDocContent, comment);
+      htmlBuilder.appendRaw(rendered);
+      return htmlBuilder.toString();
+    }
+    return null;
+  }
+
+  @Override
+  public void collectDocComments(@NotNull PsiFile file, @NotNull Consumer<? super @NotNull PsiDocCommentBase> sink) {
+    if (file instanceof HaxeFile haxeFile) {
+
+      Collection<HaxePsiDocCommentImpl> children = PsiTreeUtil.findChildrenOfAnyType(haxeFile, HaxePsiDocCommentImpl.class);
+      for (PsiComment child : children) {
+        if (child.getTokenType() == DOC_COMMENT) {
+          if (child instanceof HaxePsiDocCommentImpl haxePsiDocComment) {
+            sink.accept(haxePsiDocComment);
+          }
+        }
+      }
+    }
+  }
+
+  private static HaxeNamedComponent getNamedComponent(PsiElement element) {
+    if (element instanceof HaxeNamedComponent namedComponent) {
+      return namedComponent;
+    }
+    else if (element.getParent() instanceof HaxeNamedComponent namedComponent) {
+      return namedComponent;
+    }
+    return null;
+  }
+
+  private void processTypeParameter(HtmlBuilder builder, HaxeNamedComponent component, HaxeDocumentationRenderer renderer) {
+    if (component instanceof HaxeGenericListPart genericListPart) {
+      String signature = genericListPart.getText();
+      builder.br()
+        .appendRaw(renderer.languageHighlighting(signature))
+        .append(HtmlChunk.Element.tag("i"))
+        .append(" (Type parameter)")
+        .append(HtmlChunk.Element.tag("/i"))
+        .br();
+      HaxeGenericParam paramList = (HaxeGenericParam)genericListPart.getParent();
+      PsiElement parent = paramList.getParent();
+      if (parent instanceof HaxeMethodDeclaration methodDeclaration) {
+
+        HaxeMethodModel methodModel = methodDeclaration.getModel();
+        if (methodModel != null) {
+          builder.br().append("Defined in:").br();
+          appendMethodInfo(builder, renderer, methodModel);
+        }
+      }
+      if (parent instanceof HaxeClass haxeClass) {
+        builder.br().append("Defined in:").br();
+        addTypeSignature(builder, haxeClass, renderer);
+      }
+    }
+  }
+
+  private void processType(HtmlBuilder builder, HaxeNamedComponent component, HaxeDocumentationRenderer renderer) {
+    String packageString = HaxeResolveUtil.getPackageName(component.getContainingFile());
+
+    StringBuilder stringBuilder = new StringBuilder();
+    DocumentationManagerUtil.createHyperlink(stringBuilder, packageString, packageString, false, true);
+    builder.append(HtmlChunk.icon("AllIcons.Nodes.Package", AllIcons.Nodes.Package)).nbsp(1);
+    builder.appendRaw(stringBuilder.toString()).br();
+
+
+    addTypeSignature(builder, component, renderer);
+  }
+
+  private void addTypeSignature(HtmlBuilder builder, HaxeNamedComponent component, HaxeDocumentationRenderer renderer) {
+    if (component instanceof HaxeClassDeclaration declaration) {
+      String signature = getClassSignature(declaration);
+      builder.br().appendRaw(renderer.languageHighlighting(signature));
+    }
+    if (component instanceof HaxeExternClassDeclaration declaration) {
+      String signature = getExternClassSignature(declaration);
+      builder.br().appendRaw(renderer.languageHighlighting(signature));
+    }
+    if (component instanceof HaxeAbstractTypeDeclaration declaration) {
+      String signature = getAbstractSignature(declaration);
+      builder.br().appendRaw(renderer.languageHighlighting(signature));
+    }
+    else if (component instanceof HaxeInterfaceDeclaration interfaceDeclaration) {
+      String signature = getInterfaceSignature(interfaceDeclaration);
+      builder.br().appendRaw(renderer.languageHighlighting(signature));
+    }
+    else if (component instanceof HaxeExternInterfaceDeclaration interfaceDeclaration) {
+      String signature = getExternInterfaceSignature(interfaceDeclaration);
+      builder.br().appendRaw(renderer.languageHighlighting(signature));
+    }
+    else if (component instanceof HaxeEnumDeclaration enumDeclaration) {
+      String signature = getEnumSignature(enumDeclaration);
+      builder.br().appendRaw(renderer.languageHighlighting(signature));
+    }
+    else if (component instanceof HaxeTypedefDeclaration typeDeclaration) {
+      String signature = getTypeDefSignature(typeDeclaration);
+      String type = "(" + getTypedefType(typeDeclaration) + ")";
+      builder.br().appendRaw(renderer.languageHighlighting(signature)).append(type);
+    }
+  }
+
+  private Object getTypedefType(HaxeTypedefDeclaration declaration) {
+    HaxeFunctionType functionType = declaration.getFunctionType();
+    if (functionType != null) {
+      return functionType.getText();
+    }
+    else if (declaration.getTypeOrAnonymous() != null) {
+      HaxeType type = declaration.getTypeOrAnonymous().getType();
+      if (type != null) {
+        return type.getText();
+      }
+      else {
+        return "*Anonymous type*";
+      }
+    }
+    return null;
+  }
+
+
+  private static void appendDocumentation(HaxeNamedComponent namedComponent, HaxeDocumentationRenderer service, HtmlBuilder htmlBuilder) {
+    final PsiComment comment = HaxeResolveUtil.findDocumentation(namedComponent);
+    if(comment instanceof  HaxePsiDocCommentImpl haxeDocComment) {
+      String rawDocContent = haxeDocComment.getDocsWithoutIndents();
+      HaxeDocumentationRenderer renderer = haxeDocComment.getProject().getService(HaxeDocumentationRenderer.class);
+      String rendered = renderer.parseAndRenderDocs(rawDocContent, haxeDocComment);
+      htmlBuilder.appendRaw(rendered);
+    }
+  }
+
+
+  private void processMethod(HtmlBuilder builder, HaxeNamedComponent component, HaxeDocumentationRenderer renderer) {
+
+
+    if (component instanceof HaxeMethodDeclaration methodDeclaration) {
+      appendClassOrModuleReference(builder, methodDeclaration);
+
+      HaxeMethodModel methodModel = methodDeclaration.getModel();
+      if (methodModel != null) {
+        appendMethodInfo(builder, renderer, methodModel);
+      }
+    }
+  }
+
+  private static void appendMethodInfo(HtmlBuilder builder,
+                                       HaxeDocumentationRenderer renderer,
+                                       HaxeMethodModel methodModel) {
+    StringBuilder stringBuilder = new StringBuilder();
+
+    @NotNull PsiElement[] children = methodModel.getBasePsi().getChildren();
+
+    boolean gotParameters = false;
+    for (PsiElement child : children) {
+      if (child instanceof HaxeComponentName) {
+        stringBuilder.append("function ").append(child.getText());
+      }
+      else if (child instanceof HaxeParameterList parameterList) {
+        stringBuilder.append("(");
+        @NotNull List<HaxeParameter> list = parameterList.getParameterList();
+        for (int i = 0; i < list.size(); i++) {
+          HaxeParameter parameter = list.get(i);
+          gotParameters = true;
+          stringBuilder.append("\n").append("\t").append(parameter.getText());
+          if (i < list.size() - 1) stringBuilder.append(",");
+        }
+        if (gotParameters) stringBuilder.append("\n");
+        stringBuilder.append(")");
+      }
+      else if (child instanceof HaxeMethodModifier) {
+        stringBuilder.append(child.getText()).append(" ");
+      }
+      else if (child instanceof HaxeGenericParam) {
+        stringBuilder.append(child.getText());
+      }
+      else if (child instanceof HaxeTypeTag) {
+        if (gotParameters) stringBuilder.append("\n");
+        stringBuilder.append(child.getText());
+      }
+    }
+
+
+    String highlighting = renderer.languageHighlighting(stringBuilder.toString());
+    builder.appendRaw(highlighting);
+  }
+
+  private static void appendClassOrModuleReference(HtmlBuilder builder, PsiMember methodDeclaration) {
+    PsiClass containingClass = methodDeclaration.getContainingClass();
+    if (containingClass != null) {
+      StringBuilder stringBuilder = new StringBuilder();
+      String qualifiedName = containingClass.getQualifiedName();
+      DocumentationManagerUtil.createHyperlink(stringBuilder, qualifiedName, qualifiedName, false, true);
+      // TODO haxe icons
+      builder.append(HtmlChunk.icon("AllIcons.Nodes.Class", AllIcons.Nodes.Class)).nbsp(1);
+      builder.appendRaw(stringBuilder.toString()).br().br();
+    }
+    else {
+      PsiFile containingFile = methodDeclaration.getContainingFile();
+      //TODO make link to module
+    }
+  }
+
+  private void processField(HtmlBuilder builder, HaxeNamedComponent component, HaxeDocumentationRenderer renderer) {
+    if (component instanceof HaxeFieldDeclaration fieldDeclaration) {
+      appendClassOrModuleReference(builder, fieldDeclaration);
+      String signature = getFieldSignature(fieldDeclaration);
+      builder.br().appendRaw(renderer.languageHighlighting(signature));
+      resolveTypeAndMakeHeader(builder, component);
+    }
+    else if (component instanceof HaxeEnumValueDeclarationField enumValueDeclaration) {
+      appendClassOrModuleReference(builder, enumValueDeclaration);
+      String signature = getEnumValueSignature(enumValueDeclaration);
+      builder.br().appendRaw(renderer.languageHighlighting(signature));
+      resolveTypeAndMakeHeader(builder, component);
+    }
+    else if (component instanceof HaxeAnonymousTypeField anonymousTypeField) {
+      appendClassOrModuleReference(builder, anonymousTypeField);
+      String signature = getAnonymousTypeFieldSignature(anonymousTypeField);
+      builder.br().appendRaw(renderer.languageHighlighting(signature));
+      resolveTypeAndMakeHeader(builder, component);
+    }
+  }
+
+  private String getAnonymousTypeFieldSignature(HaxeAnonymousTypeField field) {
+    return field.getText();
+  }
+
+  private String getEnumValueSignature(HaxeEnumValueDeclaration declaration) {
+    return declaration.getText();
+  }
+
+  private String getFieldSignature(HaxeFieldDeclaration declaration) {
+    return declaration.getText();
+  }
+
+  private void processParameter(HtmlBuilder builder, HaxeNamedComponent component, HaxeDocumentationRenderer renderer) {
+    if (component instanceof HaxeParameter parameter) {
+      builder.br()
+        .appendRaw(renderer.languageHighlighting(parameter.getText()))
+        .append(HtmlChunk.Element.tag("i"))
+        .append(" (Parameter)")
+        .append(HtmlChunk.Element.tag("/i"));
+
+      PsiElement parent = parameter.getParent().getParent();
+      if (parent instanceof HaxeMethodDeclaration methodDeclaration) {
+        HaxeMethodModel methodModel = methodDeclaration.getModel();
+        if (methodModel != null) {
+          builder.br().br().append("Defined in:").br();
+          appendMethodInfo(builder, renderer, methodModel);
+        }
+      }
+    }
+    resolveTypeAndMakeHeader(builder, component);
+  }
+
+  private void processVariable(HtmlBuilder builder, HaxeNamedComponent component, HaxeDocumentationRenderer renderer) {
+    if (component instanceof HaxeSwitchCaseCaptureVar captureVar) {
+      resolveTypeAndMakeHeader(builder, captureVar);
+      //builder.br();
+    }
+    else if (component instanceof HaxeLocalVarDeclaration varDeclaration
+             && component.getParent() instanceof HaxeLocalVarDeclarationList varDeclarationList) {
+      //builder.br();
+
+      String modifier = varDeclarationList.getMutabilityModifier().getText();
+      String signature = modifier + " " + varDeclaration.getText();
+
+      String highlighting = renderer.languageHighlighting(signature);
+      builder.appendRaw(highlighting);
+
+      resolveTypeAndMakeHeader(builder, varDeclaration);
+    }
+    else if (component instanceof HaxeValueIterator) {
+      resolveTypeAndMakeHeader(builder, component);
+    }
+    else if (component instanceof HaxeIteratorkey) {
+      resolveTypeAndMakeHeader(builder, component);
+    }
+    else if (component instanceof HaxeIteratorValue) {
+      resolveTypeAndMakeHeader(builder, component);
+    }
+    else if (component instanceof HaxeEnumExtractedValue) {
+      resolveTypeAndMakeHeader(builder, component);
+    }
+  }
+
+  private static void resolveTypeAndMakeHeader(HtmlBuilder builder, HaxeNamedComponent component) {
+    HaxeExpressionEvaluatorContext context = new HaxeExpressionEvaluatorContext(component);
+    HaxeExpressionEvaluator.evaluate(component, context, null);
+
+    makeHeader(builder, context.result);
+  }
+
+  private static void makeHeader(HtmlBuilder builder, ResultHolder result) {
+    if (result != null && !result.isUnknown()) {
+      Color color = DefaultLanguageHighlighterColors.LINE_COMMENT.getDefaultAttributes().getForegroundColor();
+      HtmlChunk.Element element = new HtmlBuilder().append("(Type: " + result.getType().withoutConstantValue() + ")")
+        .wrapWith(HtmlChunk.Element.tag("code").attr("color", "#" + colorToHex(color))).wrapWith(HtmlChunk.Element.tag("i"));
+
+      builder.append(" ").append(element).br();
+    }
+  }
+
+  @Override
+  public PsiElement getDocumentationElementForLookupItem(PsiManager psiManager, Object object, PsiElement element) {
+    return null;
+  }
+
+  @Override
+  public List<String> getUrlFor(PsiElement element, PsiElement originalElement) {
+    return null;
+  }
+
+  @Override
+  public PsiElement getDocumentationElementForLink(PsiManager psiManager, String link, PsiElement context) {
+    GlobalSearchScope resolveScope = context.getResolveScope();
+
+    final FullyQualifiedInfo qualifiedInfo = new FullyQualifiedInfo(link);
+    if(context instanceof PsiDocCommentBase commentBase) {
+      PsiElement owner = commentBase.getOwner();
+      if(owner != null) {
+        resolveScope =  owner.getResolveScope();
+      }
+    }
+
+    List<HaxeModel> result = HaxeProjectModel.fromElement(context).resolve(qualifiedInfo, resolveScope);
+    if (result != null && !result.isEmpty()) {
+      HaxeModel item = result.getFirst();
+      if (item instanceof HaxeFileModel) {
+        HaxeClassModel mainClass = ((HaxeFileModel)item).getMainClassModel();
+        if (mainClass != null) {
+          return mainClass.getBasePsi();
+        }
+      }
+      return item.getBasePsi();
+    }
+    return null;
+  }
+}

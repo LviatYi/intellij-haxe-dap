@@ -17,7 +17,7 @@ plugins {
     // Kotlin support
     id("org.jetbrains.kotlin.jvm") version "2.2.0"
     // Gradle IntelliJ Plugin
-    id("org.jetbrains.intellij.platform") version "2.7.0"
+    id("org.jetbrains.intellij.platform") version "2.10.5"
     // Gradle Changelog Plugin
     id("org.jetbrains.changelog") version "2.0.0"
     // Gradle Qodana Plugin
@@ -25,7 +25,7 @@ plugins {
     // Gradle Kover Plugin
     id("org.jetbrains.kotlinx.kover") version "0.9.1"
     // generate parser and lexer
-    id("org.jetbrains.grammarkit") version "2022.3.2.2"
+    id("org.jetbrains.grammarkit") version "2023.3.0.1"
     // console output for tests
     id("com.adarshr.test-logger") version "3.2.0"
 }
@@ -45,6 +45,7 @@ dependencies {
     implementation("org.commonmark:commonmark-ext-autolink:0.21.0")
     implementation("org.commonmark:commonmark-ext-gfm-tables:0.21.0")
 
+    implementation("tools.jackson.core:jackson-databind:3.0.4")
     implementation("org.apache.commons:commons-text:1.14.0")
 
     implementation(project(":common"))

@@ -24,6 +24,8 @@ import static com.intellij.plugins.haxe.model.evaluator.assign.HaxeTypeCompatibl
 
 public class HaxeAssignExpressionAnnotator implements Annotator {
   public void annotate(@NotNull PsiElement element, @NotNull AnnotationHolder holder) {
+    if(!element.isValid()) return;
+
     if (element instanceof HaxeAssignExpression assignExpression) {
       check(assignExpression, holder);
     }
@@ -106,5 +108,6 @@ public class HaxeAssignExpressionAnnotator implements Annotator {
         .range(psi)
         .create();
     }
+      HaxeSemanticsUtil.checkNullAssignForNonNullableType(holder, rhsType, lhsType, rhs);
   }
 }

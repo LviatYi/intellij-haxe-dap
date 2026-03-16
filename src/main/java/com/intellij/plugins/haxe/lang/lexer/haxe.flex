@@ -178,7 +178,7 @@ mDIGIT = [:digit:]
 ESCAPE_SEQUENCE=\\[^\r\n]
 
 mMETA_PART = {mLETTER} ({mDIGIT} | {mLETTER})*
-META_ID =  {mMETA_PART} ("." {mMETA_PART})*
+META_ID =  ({mMETA_PART} ("." {mMETA_PART})*)?
 COMPILE_META_PREFIX="@:"
 RUNTIME_META_PREFIX="@"
 META=({RUNTIME_META_PREFIX} | {COMPILE_META_PREFIX}) {META_ID}
@@ -195,15 +195,26 @@ mINT_DIGIT = [0-9]
 mOCT_DIGIT = [0-7]
 mBIN_DIGIT = [0-1]
 
-mNUM_INT = "0" | ([1-9] {mINT_DIGIT}*)
-mNUM_HEX = ("0x" | "0X") {mHEX_DIGIT}+
-mNUM_BIN = ("0b" | "0B") {mBIN_DIGIT}+
+// handles digit separation with underscore ("_")
+mHEX_DIGIT_TAIL =((_|{mHEX_DIGIT})*{mHEX_DIGIT})
+mINT_DIGIT_TAIL =((_|{mINT_DIGIT})*{mINT_DIGIT})
+mBIN_DIGIT_TAIL =((_|{mBIN_DIGIT})*{mBIN_DIGIT})
+
+
+mNUM_INT = "0"   | ([1-9] {mINT_DIGIT_TAIL}*)
+mNUM_HEX = ("0x" | "0X") {mHEX_DIGIT} {mHEX_DIGIT_TAIL}*
+mNUM_BIN = ("0b" | "0B") {mBIN_DIGIT} {mBIN_DIGIT_TAIL}*
+
+// TODOMLO: NOT SURE IF HAXE ACTUALLY SUPPORTS OCTAL NUMBERS
 mNUM_OCT = "0" {mOCT_DIGIT}+
 
 mREG_EXP = "~/" ([^"/"] | {ESCAPE_SEQUENCE})* "/" [igmsu]*
 
-mFLOAT_EXPONENT = [eE] [+-]? {mDIGIT}+
-mNUM_FLOAT = ( (({mDIGIT}* "." {mDIGIT}+) | ({mDIGIT}+ "." {mDIGIT}*)) {mFLOAT_EXPONENT}?) | ({mDIGIT}+ {mFLOAT_EXPONENT})
+mBFLOAT_DIGIT_TAIL =((_|{mDIGIT})*{mDIGIT})
+mFLOAT_DIGITS = {mDIGIT} {mBFLOAT_DIGIT_TAIL}*
+
+mFLOAT_EXPONENT = [eE] [+-]? {mFLOAT_DIGITS}+
+mNUM_FLOAT = ( (({mFLOAT_DIGITS}? "." {mFLOAT_DIGITS}) | ({mFLOAT_DIGITS} "." {mFLOAT_DIGITS}?)) {mFLOAT_EXPONENT}?) | ({mFLOAT_DIGITS} {mFLOAT_EXPONENT})
 
 
 /*

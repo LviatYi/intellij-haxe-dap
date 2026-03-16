@@ -47,7 +47,8 @@
   <extensions defaultExtensionNs="com.intellij">
 
     <iconMapper mappingFile="HaxeIconMappings.json"/>
-    <compileServer.plugin  classpath="jps-plugin.jar;common.jar"/>
+      <!-- NOTE: Looks like intellij-platform-gradle-plugin 2.7.0 prefixes all extra jars with rootProject.name-->
+      <compileServer.plugin  id="haxe" classpath="Haxe-plugin.jps-plugin.jar;Haxe-plugin.common.jar"/>
     <testFinder implementation="com.intellij.plugins.haxe.ide.HaxeTestFinder"/>
 
     <iconProvider implementation="com.intellij.plugins.haxe.ide.HaxeIconProvider"/>
@@ -150,7 +151,13 @@
     <lang.findUsagesProvider language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeFindUsagesProvider"/>
     <lang.implementationTextSelectioner language="Haxe"
                                         implementationClass="com.intellij.plugins.haxe.ide.HaxeImplementationTextSelectioner"/>
-    <lang.documentationProvider language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeDocumentationProvider"/>
+
+<!--    TODO migrate to psiTargetProvider /  linkHandler etc-->
+    <lang.documentationProvider language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.documentation.providers.HaxeDocumentationProvider"/>
+
+    <platform.backend.documentation.targetProvider  implementation="com.intellij.plugins.haxe.ide.documentation.providers.HaxeMetadataDocumentationProvider"/>
+    <platform.backend.documentation.lookupElementTargetProvider implementation="com.intellij.plugins.haxe.ide.documentation.providers.HaxeLookupElementDocumentationProvider"/>
+
     <lang.commenter language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeCommenter"/>
     <lang.psiStructureViewFactory language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.structure.HaxeStructureViewFactory"/>
     <lang.surroundDescriptor language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.surroundWith.HaxeSurroundDescriptor"/>
@@ -164,6 +171,8 @@
                              implementationClass="com.intellij.plugins.haxe.lang.psi.manipulators.HaxeRegularExpressionLiteralManipulator"/>
     <lang.smartEnterProcessor language="Haxe" implementationClass="com.intellij.plugins.haxe.editor.smartEnter.HaxeSmartEnterProcessor"/>
 
+    <enterHandlerDelegate implementation="com.intellij.plugins.haxe.ide.editor.HaxeDocumentationEnterHandler" order="first"/>
+
     <copyPastePostProcessor implementation="com.intellij.plugins.haxe.editor.HaxeReferenceCopyPasteProcessor"/>
 
     <moveFileHandler implementation="com.intellij.plugins.haxe.ide.refactoring.move.HaxeFileMoveHandler"/>
@@ -172,6 +181,9 @@
          pre-existing renamers will take over if they are found first, and our extensions won't be used. -->
     <renamePsiElementProcessor order="first" implementation="com.intellij.plugins.haxe.ide.refactoring.rename.HaxeRenameProcessor"/>
     <!-- =============================================================================================== -->
+
+    <statementUpDownMover implementation="com.intellij.plugins.haxe.ide.refactoring.move.HaxeMoveDeclarationHandler" id="HaxeMoveDeclaration"/>
+    <statementUpDownMover implementation="com.intellij.plugins.haxe.ide.refactoring.move.HaxeMoveStatementHandler" id="HaxeMoveStatement" order="after HaxeMoveDeclaration"/>
 
     <codeInsight.lineMarkerProvider language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeLineMarkerProvider"/>
     <codeInsight.gotoSuper language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeGotoSuperHandler"/>
@@ -257,6 +269,9 @@
     <codeStyleSettingsProvider implementation="com.intellij.plugins.haxe.ide.formatter.settings.HaxeCodeStyleSettingsProvider"/>
     <langCodeStyleSettingsProvider implementation="com.intellij.plugins.haxe.ide.formatter.settings.HaxeLanguageCodeStyleSettingsProvider"/>
 
+    <breadcrumbsInfoProvider implementation="com.intellij.plugins.haxe.ide.editor.HaxeBreadcrumbsInfoProvider" id="Haxe"/>
+
+
     <quoteHandler fileType="Haxe" className="com.intellij.plugins.haxe.ide.HaxeQuoteHandler"/>
 
     <extendWordSelectionHandler implementation="com.intellij.plugins.haxe.editor.actions.wordSelection.HaxeStringSelectioner" />
@@ -273,7 +288,7 @@
     <completion.contributor language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.completion.HaxeClassNameCompletionContributor"/>
     <completion.contributor language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.HaxeSmartCompletionContributor"/>
     <completion.contributor language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.completion.HaxeMacroCompletionContributor"/>
-    <completion.contributor language="Haxe" implementationClass="com.intellij.plugins.haxe.ide.completion.HaxeMetaTagsCompletionContributor"/>
+    <completion.contributor language="HaxeMetadata" implementationClass="com.intellij.plugins.haxe.ide.completion.HaxeMetaTagsCompletionContributor" order="FIRST"/>
     <completion.contributor language="HXML" implementationClass="com.intellij.plugins.haxe.ide.HXMLCompilerArgumentsCompletionContributor"/>
     <completion.contributor language="HXML" implementationClass="com.intellij.plugins.haxe.ide.HXMLHaxelibCompletionContributor"/>
     <completion.contributor language="HXML" implementationClass="com.intellij.plugins.haxe.ide.HXMLDefineCompletionContributor"/>
@@ -317,11 +332,12 @@
     <projectService serviceImplementation="com.intellij.plugins.haxe.config.HaxeProjectSettings"/>
     <projectService serviceImplementation="com.intellij.plugins.haxe.lang.psi.HaxeClassResolveCache"/>
 
-    <projectService serviceImplementation="com.intellij.plugins.haxe.ide.HaxeDocumentationRenderer"/>
+    <projectService serviceImplementation="com.intellij.plugins.haxe.ide.documentation.HaxeDocumentationRenderer"/>
 
     <projectService serviceImplementation="com.intellij.plugins.haxe.haxelib.HaxelibModuleManagerService"/>
 
     <projectService serviceImplementation="com.intellij.plugins.haxe.model.evaluator.HaxeExpressionEvaluatorCacheService"/>
+    <projectService serviceImplementation="com.intellij.plugins.haxe.model.evaluator.HaxeCallExpressionEvaluatorCacheService"/>
 
     <projectConfigurable instance="com.intellij.plugins.haxe.config.HaxeProjectSettingsConfigurable"
                          parentId="build"
@@ -512,7 +528,9 @@
                 canCloseContents="true"
                 factoryClass="com.intellij.plugins.haxe.ide.toolWindow.HaxelibConsoleWindowFactory"/>
 
-    <readWriteAccessDetector implementation="com.intellij.plugins.haxe.ide.HaxeReadWriteAccessDetector"/>
+    <readWriteAccessDetector implementation="com.intellij.plugins.haxe.ide.HaxeReadWriteAccessDetector"
+                             id="haxe"
+                             order="first, before kotlin, before java"/>
 
     <postStartupActivity implementation="com.intellij.plugins.haxe.haxelib.HaxelibProjectStartActivity"/>
 

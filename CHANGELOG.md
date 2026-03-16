@@ -1,4 +1,45 @@
 # Changelog
+## 1.7.11
+* Bugfix: Extern classes with a constructor that extends other classes should no longer warn about missing super call.
+* Bugfix: `case` keyword was not sugested in nested switch statements.
+* Fixed: Documentation completion should now result in the correct indentation
+* Fixed: Module member references should now be resolved correctly when imported using wildcard.
+* Changed: Operator overload methods should no longer show unused warning
+* Changed: Documentation view will now also show deprecation information when `@:deprecated` is present.
+* Improvement: projects with HXML configurations will now also check referenced Hxml files for libraries.  
+* Improvement: Resolver should now be better at finding Enum type when enum extractors are used.
+* Improvement: Initial support for collision detection when performing rename operations.
+
+## 1.7.10
+* Added: Initial support for `@:overload` on methods and constructors.
+* Bugfix: Fixed issue where capture variables would show the wrong type (#1233)
+* Improvement: Completion suggestions for built-in metadata should now work better and show more detailed docs.
+* Improvement: Added imports and using from `import.hx` to completion suggestions (#1234)
+* Improvement: Support for numeric separators (#1232) 
+* Improvement: Completion for function `bind` and single character string `code` (#1231)
+* Fixed: Incorrect missing return statement annotations on switch statements with capture variables
+* Fixed: Incorrect cannot assign annotation for object literals with functions to typedef types.
+
+## 1.7.9
+* Changed: Allow arbitrary amount of typeParameters when `@:genericBuild` macros are used in conjugation with TypeParameter named "Rest"
+* Bugfix: Fixed incorrect annotation on typeParameters when mixing TypeParameters with and without defaults
+* Bugfix: Fixed issue where completion suggestions would not include suggestions for imports in import.hx
+
+## 1.7.8
+* Bugfix: Fixed issue where numeric operators would incorrectly display an error for platform specific numeric types  (#1228)
+* Added: Weak warning when assigning `null` to types annotated with @:notNull  
+
+## 1.7.7
+* Added: Intellij 2025.3 support
+* Added: Declaration and expression move up/down handers
+* Fixed: Parameter info and inlays where incorrectly showing first parameter for extension methods and macro member methods 
+
+## 1.7.6
+* Added: Line marker for recursions 
+* Added: Support for showing breadcrumbs 
+* bugfix: Intellij 2025.2 plugin code changes broke debugging, it should now work again. 
+* Bugfix: Find usage would not show write access (#1226 - Fix by LviatYi)
+
 ## 1.7.5
 * Added: Initial support for intellij 2025.2.
 * Added: Detecting code references in console output and making them navigatable.

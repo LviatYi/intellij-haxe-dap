@@ -905,7 +905,7 @@ public class HaxeResolveUtil {
     if (element == null || element.getContext() == null) {
       return null;
     }
-    String name = getQNameFromImportStatment(element);
+    String name = getQNameFromImportStatement(element);
     PsiElement type = tryGetReferenceExpressionFromType(element);
     HaxeClass result = name == null ? tryResolveClassByQNameWhenGetQNameFail(type) : findClassByQName(name, element.getContext());
     result = result != null ? result : findClassByQNameInSuperPackages(type);
@@ -970,7 +970,7 @@ public class HaxeResolveUtil {
   }
 
   @Nullable
-  private static String getQNameFromImportStatment(@NotNull PsiElement type) {
+  private static String getQNameFromImportStatement(@NotNull PsiElement type) {
     HaxeImportStatement importStatement = PsiTreeUtil.getParentOfType(type, HaxeImportStatement.class, false);
     if (importStatement != null) {
       HaxeReferenceExpression referenceExpression = importStatement.getReferenceExpression();
@@ -1018,19 +1018,34 @@ public class HaxeResolveUtil {
                 .toList();
             }
             // one file may contain multiple enums and have enumValues with the same name; trying to match any argument list
-            if(matchesInImport.size()> 1 &&  type.getParent() instanceof  HaxeCallExpression callExpression) {
-              int expectedSize = Optional.ofNullable(callExpression.getExpressionList()).map(e -> e.getExpressionList().size()).orElse(0);
-              for (PsiElement element : matchesInImport) {
-                if (element instanceof  HaxeEnumValueDeclarationConstructor enumValueDeclaration) {
-                  int currentSize = Optional.of(enumValueDeclaration.getParameterList()).map(p ->  p.getParameterList().size()).orElse(0);
-                  if (expectedSize == currentSize) {
-                    result = element;
-                    break;
+            if (matchesInImport.size() > 1) {
+              if (type.getParent() instanceof HaxeCallExpression callExpression) {
+                int expectedSize = Optional.ofNullable(callExpression.getExpressionList()).map(e -> e.getExpressionList().size()).orElse(0);
+                for (PsiElement element : matchesInImport) {
+                  if (element instanceof HaxeEnumValueDeclarationConstructor enumValueDeclaration) {
+                    int currentSize = Optional.of(enumValueDeclaration.getParameterList()).map(p -> p.getParameterList().size()).orElse(0);
+                    if (expectedSize == currentSize) {
+                      result = element;
+                      break;
+                    }
+                  }
+                }
+                // we may also get multiple matches due to both module and class names can be the same,
+                // so we check if we are resolving a reference expression and check if the class contains
+                // the expected member
+              } else if (type.getParent() instanceof HaxeReferenceExpression reference) {
+                String memberName = reference.getIdentifier().getText();
+                for (PsiElement element : matchesInImport) {
+                  if (element instanceof HaxeClass haxeClass) {
+                    HaxeClassModel model = haxeClass.getModel();
+                    if (model.getMember(memberName, null) != null) {
+                      return haxeClass;
+                    }
                   }
                 }
               }
             }
-            if (result == null && !matchesInImport.isEmpty()) result = matchesInImport.get(0);
+            if (result == null && !matchesInImport.isEmpty()) result = matchesInImport.getFirst();
           }
         }
         if (result == null) result = searchInSamePackage(fileModel, className, false, false);
@@ -1099,12 +1114,7 @@ public class HaxeResolveUtil {
       HaxeImportableModel model = models.get(i);
 
       if (model instanceof HaxeImportModel importModel) {
-        List<PsiElement> elements = importModel.exposeAllByName(name);
-        if(elements.isEmpty()) {
-          addIfModuleMatch(name, importModel, results);
-        } else {
-          results.addAll(elements);
-        }
+        results.addAll(importModel.exposeAllByName(name));
       } else {
         PsiElement element = model.exposeByName(name);
         if (element != null) {
@@ -1115,18 +1125,6 @@ public class HaxeResolveUtil {
     return results;
   }
 
-  private static void addIfModuleMatch(String name, HaxeImportModel importModel, List<PsiElement> results) {
-    HaxeReferenceExpression referenceExpression = importModel.getReferenceExpression();
-    if ((referenceExpression != null)) {
-      PsiElement lastChild = referenceExpression.getLastChild();
-      if(name.equals(lastChild.getText())){
-        PsiElement resolve = referenceExpression.resolve();
-        if(resolve instanceof HaxeModule module) {
-          results.add(module);
-        }
-      }
-    }
-  }
 
   /**
    * Searches for import.hx files between the file's directory and the source root,
@@ -1158,8 +1156,16 @@ public class HaxeResolveUtil {
    */
   public static boolean walkDirectoryImports(HaxeFileModel file, @NotNull java.util.function.Function<HaxeFileModel, Boolean> processor) {
     if (null == file) return true;
+    HaxeFile haxeFile = file.getFile();
 
-    final VirtualFile vfile = file.getFile().getVirtualFile();
+    // Attempt to get physical file if possible, necessary if we are to walk directories
+    if(!file.getFile().isPhysical()) {
+      if(file.getFile().getOriginalFile() instanceof HaxeFile realFile) {
+        haxeFile = realFile;
+      }
+    }
+
+    final VirtualFile vfile = haxeFile.getVirtualFile();
     if (null == vfile) return true; // In memory files
 
     final ProjectFileIndex fileIndex = ProjectRootManager.getInstance(file.getBasePsi().getProject()).getFileIndex();
@@ -1167,7 +1173,7 @@ public class HaxeResolveUtil {
     if (null == sourceRoot) return true;
 
     boolean keepRunning = true;
-    HaxeFile haxeFile = file.getFile();
+
     PsiDirectory parentDirectory = haxeFile.getContainingDirectory();
     final VirtualFile stopDir = sourceRoot.getParent(); // SrcRoot is a valid place to pick up an import.hx file.
     while (keepRunning && null != parentDirectory && !parentDirectory.getVirtualFile().equals(stopDir)) {
@@ -1508,5 +1514,40 @@ public class HaxeResolveUtil {
     }
 
     return false;
+  }
+
+    public static PsiElement tryResolveModuleReference(@NotNull HaxeReference reference) {
+      return tryResolveModuleReference(reference, true);
+    }
+
+  public static PsiElement tryResolveModuleReference(@NotNull HaxeReference reference, boolean allowRecursive) {
+    // if we only got a name its hard to tell if its a class or module we are accessing,
+    // so we check if references is part of a chain and use that as hint.
+    if (allowRecursive) {
+      if (!reference.textContains('.') && reference.getParent() instanceof HaxeReferenceExpression parent) {
+        return tryResolveModuleReference(parent, false);
+      }
+    }
+    if (reference instanceof HaxeReferenceExpression referenceExpression) {
+      final HaxeFileModel fileModel = HaxeFileModel.fromElement(reference);
+      if (fileModel != null) {
+        HaxeReference leftReference = HaxeResolveUtil.getLeftReference(reference);
+        if (leftReference != null) {
+          String refName = leftReference.getText();
+          List<PsiElement> matchesInImport = searchInImports(fileModel, refName);
+          String memberName = referenceExpression.getIdentifier().getText();
+          for (PsiElement element : matchesInImport) {
+            if (element instanceof HaxeModule haxeModule && haxeModule.getModel() instanceof HaxeModuleModel model) {
+              if (model.getMember(memberName, null) != null) {
+                return element;
+              }else if (model.getClass(memberName) != null) {
+                return element;
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
   }
 }

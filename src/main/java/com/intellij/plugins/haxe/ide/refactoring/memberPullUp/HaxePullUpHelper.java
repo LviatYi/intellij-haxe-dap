@@ -275,7 +275,7 @@ public class HaxePullUpHelper implements PullUpHelper<MemberInfo> {
 
       if (!PsiUtil.isLanguageLevel6OrHigher(mySourceClass) && myIsTargetInterface) {
         if (isOriginalMethodAbstract) {
-          for (PsiMethod oMethod : OverridingMethodsSearch.search(method)) {
+          for (PsiMethod oMethod : OverridingMethodsSearch.search(method).findAll()) {
             deleteOverrideAnnotationIfFound(oMethod);
           }
         }
@@ -596,7 +596,7 @@ public class HaxePullUpHelper implements PullUpHelper<MemberInfo> {
       }
       if (doLookup) {
         final PsiReference[] references =
-          ReferencesSearch.search(field, new LocalSearchScope(statement), false).toArray(new PsiReference[0]);
+          ReferencesSearch.search(field, new LocalSearchScope(statement), false).findAll().toArray(new PsiReference[0]);
         if (commonInitializerCandidate == null && references.length > 0) {
           return null;
         }
