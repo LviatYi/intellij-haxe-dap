@@ -50,19 +50,23 @@ public abstract class HaxeImportableModel implements HaxeExposableModel {
 
   @NotNull
   public List<HaxeModel> getExposedMembersInternal() {
+    boolean isUsing = this instanceof HaxeUsingModel; // TODO should probably  do thins in a different way
     FullyQualifiedInfo qualifiedInfo = getQualifiedInfo();
     List<HaxeModel> result;
     result = HaxeProjectModel.fromElement(basePsi).resolve(qualifiedInfo, basePsi.getResolveScope());
     if (result != null && !result.isEmpty()) {
       HaxeModel firstItem = result.getFirst();
-      if (firstItem instanceof HaxeFileModel || firstItem instanceof HaxePackageModel) {
-        result = ((HaxeExposableModel)firstItem).getExposedMembers();
-      }
+        if (firstItem instanceof HaxeFileModel fileModel) {
+            result = isUsing ? fileModel.getModuleMembers() : fileModel.getExposedMembers();
+        } else if (firstItem instanceof HaxePackageModel packageModel) {
+            result = packageModel.getExposedMembers();
+        }
     }
     return result == null ? Collections.emptyList() : result;
   }
 
   private static List<HaxeModel> getExposedMembersCached(final HaxeImportableModel importableModel) {
+
     return CachedValuesManager.getCachedValue(importableModel.getBasePsi(), () -> {
       List<HaxeModel> exposedMembers = importableModel.getExposedMembersInternal();
       PsiElement[] dependencies = new PsiElement[exposedMembers.size() + 1];
@@ -71,6 +75,7 @@ public abstract class HaxeImportableModel implements HaxeExposableModel {
       for (HaxeModel xMember : exposedMembers) {
         dependencies[i++] = xMember.getBasePsi();
       }
+
       return new CachedValueProvider.Result<>(exposedMembers, (Object[]) dependencies);
     });
   }
@@ -83,10 +88,15 @@ public abstract class HaxeImportableModel implements HaxeExposableModel {
 
   @Nullable
   protected HaxeModel getExposedMember(String name) {
+    return getExposedMember(name, false);
+  }
+  protected HaxeModel getExposedMember(String name, boolean isUsing) {
     List<? extends HaxeModel> members = getExposedMembers();
     if (members.isEmpty()) return null;
     for (HaxeModel model : members) {
       if (name.equals(model.getName())) {
+        // using imports does not seem to include modules
+        if(isUsing && model instanceof HaxeModuleModel) continue;
         return model;
       }
     }

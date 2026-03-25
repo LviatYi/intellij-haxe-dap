@@ -74,6 +74,17 @@
 
 * Changed: add support for HXCPP driven by Debug Adapter Protocol (DAP) for debugging.
 
+## 1.7.11
+* Bugfix: Extern classes with a constructor that extends other classes should no longer warn about missing super call.
+* Bugfix: `case` keyword was not sugested in nested switch statements.
+* Fixed: Documentation completion should now result in the correct indentation
+* Fixed: Module member references should now be resolved correctly when imported using wildcard.
+* Changed: Operator overload methods should no longer show unused warning
+* Changed: Documentation view will now also show deprecation information when `@:deprecated` is present.
+* Improvement: projects with HXML configurations will now also check referenced Hxml files for libraries.
+* Improvement: Resolver should now be better at finding Enum type when enum extractors are used.
+* Improvement: Initial support for collision detection when performing rename operations.
+
 ## 1.7.10
 * Added: Initial support for `@:overload` on methods and constructors.
 * Bugfix: Fixed issue where capture variables would show the wrong type (#1233)

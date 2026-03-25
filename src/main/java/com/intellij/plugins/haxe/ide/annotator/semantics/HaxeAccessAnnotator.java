@@ -36,6 +36,8 @@ import static com.intellij.plugins.haxe.metadata.psi.HaxeMeta.*;
 public class HaxeAccessAnnotator implements Annotator {
   @Override
   public void annotate(@NotNull PsiElement element, @NotNull AnnotationHolder holder) {
+    if(!element.isValid()) return;
+
     if (element instanceof HaxeReferenceExpression referenceExpression) {
       // we want to ignore references used in package, type or metas
       if (checkIfShouldBeIgnored(referenceExpression)) return;
@@ -169,9 +171,11 @@ public class HaxeAccessAnnotator implements Annotator {
     boolean isStaticAccess = isStaticAccess(referenceExpression);
     boolean isMemberStatic = memberModel.isStatic();
     boolean isMemberInline = memberModel.isInline();
+    boolean isModuleMember = memberModel.isModuleMember();
     boolean isConstructor = (memberModel instanceof HaxeMethodModel model) && model.isConstructor();
     boolean isMethodBind = (memberModel instanceof HaxeMethodModel) && referenceExpression.getLastChild().textMatches("bind");
     if(isMethodBind)  return;
+    if(isModuleMember)  return;
     if (isStaticAccess && !isMemberStatic && !isConstructor) {
       // TODO bundle
       holder.newAnnotation(HighlightSeverity.ERROR, "Static access to instance field " + memberModel.getName() + " is not allowed ")
@@ -545,6 +549,7 @@ public class HaxeAccessAnnotator implements Annotator {
       ResultHolder typeFromType = HaxeTypeResolver.getTypeFromType(newExpression.getType());
       if (typeFromType.getClassType() == null) return false;
       HaxeClass constructableType = HaxeConstraintsTypeUtil.getConstructableType(newExpression);
+      if (constructableType == null) return false;
       HaxeClassModel model = constructableType.getModel();
       return typeFromType.canAssign(model.getInstanceReference().createHolder());
   }

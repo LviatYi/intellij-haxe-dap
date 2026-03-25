@@ -262,7 +262,7 @@ public class HaxeCallExpressionContext {
 
             if (assignEvaluation == null) {
                 // Recursion guard
-                return evaluation.validationFailed();
+                return evaluation.validationFailed(true);
 //        break;
             } else if (assignEvaluation.result) {
                 //assign OK, add to evaluation result
@@ -368,7 +368,7 @@ public class HaxeCallExpressionContext {
                     }
                 }
             }
-            else if (parameterClassReference.createHolder().containsUnknownTypeParameters()) {
+            else if (parameterClassReference.createHolder().containsUnknownOrUnresolvedTypeParameters()) {
                 if(argumentType instanceof  SpecificHaxeClassReference argumentClassReference) {
                     SpecificHaxeClassReference downCastedType = argumentClassReference.tryCastToClass(parameterClassReference, true);
                     if (downCastedType != null) {

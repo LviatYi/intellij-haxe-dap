@@ -987,10 +987,10 @@ public class HaxeExpressionEvaluatorHandlers {
         }
         if (valueIterator != null) {
           HaxeComponentName name = valueIterator.getComponentName();
-            context.setLocal(name.getText(), new ResultHolder(type));
+            context.setLocal(name, new ResultHolder(type));
           } else if (keyValueIterator != null) {
-            context.setLocal(keyValueIterator.getIteratorkey().getComponentName().getText(), new ResultHolder(type));
-            context.setLocal(keyValueIterator.getIteratorValue().getComponentName().getText(), new ResultHolder(type));
+            context.setLocal(keyValueIterator.getIteratorkey().getComponentName(), new ResultHolder(type));
+            context.setLocal(keyValueIterator.getIteratorValue().getComponentName(), new ResultHolder(type));
           }
         return handle(body, context, resolver);
       }
@@ -1119,7 +1119,8 @@ public class HaxeExpressionEvaluatorHandlers {
 
         ResultHolder argumentType = handle(openParamList.getUntypedParameter(), new HaxeExpressionEvaluatorContext(openParamList), null);
         HaxeUntypedParameter untypedParameter = openParamList.getUntypedParameter();
-        String argumentName = untypedParameter.getComponentName().getName();
+        HaxeComponentName componentName = untypedParameter.getComponentName();
+        String argumentName = componentName.getName();
         // if defined in a call expression (as an argument) we can match definitions with corresponding method  parameter
         if(function.getParent() instanceof  HaxeCallExpressionList callExpressionList
            && callExpressionList.getParent() instanceof  HaxeCallExpression callExpression
@@ -1128,8 +1129,7 @@ public class HaxeExpressionEvaluatorHandlers {
           PsiElement resolve = referenceExpression.resolve();
           if(resolve instanceof  HaxeMethod method) {
             int index = callExpressionList.getExpressionList().indexOf(function);
-            HaxeCallExpressionContextContainer contextContainer = HaxeCallExpressionUtil.createContextForMethodCall(callExpression, method);
-            HaxeCallExpressionEvaluation validation = contextContainer.evaluateContexts();
+            HaxeCallExpressionEvaluation validation = HaxeCallExpressionEvaluatorCacheService.cachedHaxeCallExpressionEvaluation(method, callExpression);
             if (validation != null) {
               Map<Integer, Integer> indexMap = validation.getArgumentToParameterIndex();
               int parameterIndex = indexMap.getOrDefault(index, -1);
@@ -1153,7 +1153,7 @@ public class HaxeExpressionEvaluatorHandlers {
           }
 
         }
-        context.setLocal(argumentName, argumentType);
+        context.setLocal(componentName, argumentType);
         // TODO check if rest param?
         arguments.add(new HaxeArgument(untypedParameter, 0, false, false, argumentType, argumentName));
       } else if (parameterList != null) {
@@ -1163,7 +1163,7 @@ public class HaxeExpressionEvaluatorHandlers {
           //ResultHolder argumentType = HaxeTypeResolver.getTypeFromTypeTag(parameter.getTypeTag(), function);
           ResultHolder argumentType = handleWithRecursionGuard(parameter, context, resolver);
           if (argumentType == null) argumentType = SpecificTypeReference.getUnknown(parameter).createHolder();
-          context.setLocal(parameter.getName(), argumentType);
+          context.setLocal(parameter, argumentType);
           // TODO check if rest param?
           boolean optional = parameter.getOptionalMark() != null || parameter.getVarInit() != null;
           arguments.add(new HaxeArgument(parameter, i, optional, false, argumentType, parameter.getName()));
@@ -1252,6 +1252,11 @@ public class HaxeExpressionEvaluatorHandlers {
         ResultHolder resolve = resolver.resolve(left.createHolder());
         if(resolve != null && !resolve.isUnknown())left = resolve.getType();
       }
+      // make sure we fully resolve and unwrap any nulls and typedefs before searching for accessors or checking if array class
+      if(left instanceof SpecificHaxeClassReference classReference) {
+        left = classReference.fullyResolveTypeDefAndUnwrapNullTypeReference();
+      }
+
       if (left.isArray()) {
         Object constant = null;
         if (left.isConstant()) {
@@ -1263,7 +1268,7 @@ public class HaxeExpressionEvaluatorHandlers {
             final HaxeRange constraint = right.getRangeConstraint();
             HaxeRange arrayBounds = new HaxeRange(0, array.size());
             if (right.isConstant()) {
-              final int index = HaxeTypeUtils.getIntValue(right.getConstant());
+              final int index = HaxeTypeLiteralsUtils.getIntValue(right.getConstant());
               if (arrayBounds.contains(index)) {
                 constant = array.get(index);
               }
@@ -1284,11 +1289,6 @@ public class HaxeExpressionEvaluatorHandlers {
       }
       //if not native array, look up ArrayAccessGetter method and use result
       if(left instanceof SpecificHaxeClassReference classReference) {
-        // make sure we fully resolve and unwrap any nulls and typedefs before searching for accessors
-        SpecificTypeReference reference = classReference.fullyResolveTypeDefAndUnwrapNullTypeReference();
-        if (reference instanceof SpecificHaxeClassReference fullyResolved){
-          classReference = fullyResolved;
-        }
 
         HaxeClass haxeClass = classReference.getHaxeClass();
         if (haxeClass != null) {
@@ -1367,8 +1367,8 @@ public class HaxeExpressionEvaluatorHandlers {
       Object constant = null;
       if (left.isConstant() && right.isConstant()) {
         constant = new HaxeRange(
-          HaxeTypeUtils.getIntValue(left.getConstant()),
-          HaxeTypeUtils.getIntValue(right.getConstant())
+          HaxeTypeLiteralsUtils.getIntValue(left.getConstant()),
+          HaxeTypeLiteralsUtils.getIntValue(right.getConstant())
         );
       }
       return SpecificHaxeClassReference.getIterator(SpecificHaxeClassReference.getInt(iteratorExpression)).withConstantValue(constant)
@@ -1849,8 +1849,7 @@ public class HaxeExpressionEvaluatorHandlers {
 
       // if reference to "real" method, try to use any argument to type parameter mapping
       if (ftype.method != null && returnType.isOrContainsTypeParameters()) {
-        HaxeCallExpressionContextContainer contextContainer = HaxeCallExpressionUtil.createContextForMethodCall(callExpression, ftype.method.getMethod());
-        HaxeCallExpressionEvaluation validation = contextContainer.evaluateContexts();
+        HaxeCallExpressionEvaluation validation = HaxeCallExpressionEvaluatorCacheService.cachedHaxeCallExpressionEvaluation(ftype.method.getMethod(), callExpression);
         if(validation != null) {
         functionResolver.addAll(validation.getCallExpressionResolver());
         }
@@ -2039,15 +2038,15 @@ public class HaxeExpressionEvaluatorHandlers {
       result = tryToFindTypeFromUsage(element, result, hint, context, resolver, null);
     }
 
-    if (isUnknownLiteralArray(result) && result.containsUnknownTypeParameters()) {
+    if (isUnknownLiteralArray(result) && result.containsUnknownOrUnresolvedTypeParameters()) {
       result = searchReferencesForTypeParameters(name, context, resolver, result);
     }
-    if (result != null && result.containsUnknownTypeParameters()) {
+    if (result != null && result.containsUnknownOrUnresolvedTypeParameters()) {
       result = searchReferencesForTypeParameters(name, context, resolver, result);
     }
 
     result = tryGetEnumValuesDeclaringClass(result);
-    context.setLocal(name.getText(), result);
+    context.setLocal(name, result);
     // disable/enable mutation (disable if final with init expression)
       if (result != null) result.setImmutable(immutable);
     return result;
@@ -2092,7 +2091,7 @@ public class HaxeExpressionEvaluatorHandlers {
 
       if (leftResult.isUnknown()) {
         leftResult.setType(rightResult.getType());
-        context.setLocalWhereDefined(left.getText(), leftResult);
+        context.setLocalWhereDefined(left, leftResult);
       }
       leftResult.removeConstant();
 
@@ -2180,7 +2179,7 @@ public class HaxeExpressionEvaluatorHandlers {
 
   static ResultHolder handleIdentifier(HaxeExpressionEvaluatorContext context, HaxeIdentifier identifier) {
     // If it has already been seen, then use whatever type is already known.
-    ResultHolder holder = context.get(identifier.getText());
+    ResultHolder holder = context.get(identifier);
     if (holder == null) {
       // context.addError(element, "Unknown variable", new HaxeCreateLocalVariableFixer(element.getText(), element));
 
@@ -2616,8 +2615,7 @@ public class HaxeExpressionEvaluatorHandlers {
       if (callExpression.getExpression() instanceof HaxeReferenceExpression referenceExpression) {
         PsiElement resolve = referenceExpression.resolve();
         if (resolve instanceof HaxeMethod method) {
-          HaxeCallExpressionContextContainer contextContainer = HaxeCallExpressionUtil.createContextForMethodCall(callExpression, method);
-          HaxeCallExpressionEvaluation evaluate = contextContainer.evaluateContexts();
+          HaxeCallExpressionEvaluation evaluate = HaxeCallExpressionEvaluatorCacheService.cachedHaxeCallExpressionEvaluation(method, callExpression);
           if (evaluate != null) {
             ResultHolder parameterType = evaluate.getParameterType(index);
             if (parameterType != null && !parameterType.isUnknown()) {
