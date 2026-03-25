@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.1.1(1.7.10)
+
+* Fixed: buffer clearing in DapHaxeProtocol.
+
+## 2.1.0(1.7.10)
+
+* Changed: Merge IntelliJ-Haxe 1.7.10 into this repo. We support IntelliJ 2025.3 now.
 * Changed: Additional type support has been added to breadcrumbs.
 * Changed: `HaxeLineMarkerMemberNavigator` and `HaxeLineMarkerProviderNS` now support recursive subclasses resolving.
 

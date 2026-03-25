@@ -1595,7 +1595,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
             this.debugSocket = new java.net.Socket();
             this.debugSocket.connect(new java.net.InetSocketAddress(remoteUrl, port), 3000);
           }
-      }
+        }
         catch (BindException e) {
           killProcessUsePort(port);
           this.debugSocket = null;
@@ -1648,7 +1648,6 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         this.serverSocket = null;
       }
       while (debugSocket != null) {
-
         var message = DapHaxeProtocol.readMessage(debugSocket.getInputStream());
         if (message != null) {
           var dpt = DebugProtocolTypes.fromString(message.method);

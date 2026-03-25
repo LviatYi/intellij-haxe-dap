@@ -20,7 +20,6 @@ public class DapHaxeProtocol extends haxe.lang.HxObject {
   private final static int INVALID_MESSAGE_LENGTH = -1;
   private final static int LENGTH_BYTES = 4;
 
-  private static Map<Integer, CommandCallback> callbacks = new HashMap<>();
   public static ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE).order(java.nio.ByteOrder.LITTLE_ENDIAN);
   public static int nextMessageLength = INVALID_MESSAGE_LENGTH;
 
@@ -36,6 +35,7 @@ public class DapHaxeProtocol extends haxe.lang.HxObject {
 
   public static void clearBuffer() {
     buffer.clear();
+    nextMessageLength = INVALID_MESSAGE_LENGTH;
   }
 
   private static void ensureCapacity(int additionalDataLength) {
