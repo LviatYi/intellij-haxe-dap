@@ -55,7 +55,7 @@ public class HaxeIndentProcessor {
     final ASTNode firstChild = node.getFirstChildNode();
     final IElementType firstChildType = firstChild == null ? null : firstChild.getElementType();
 
-    final int braceStyle = FUNCTION_DEFINITION.contains(superParentType) ? settings.METHOD_BRACE_STYLE : settings.BRACE_STYLE;
+    final int braceStyle = usesMethodBraceStyle(superParentType) ? settings.METHOD_BRACE_STYLE : settings.BRACE_STYLE;
 
     if (parent == null || parent.getTreeParent() == null) {
       return Indent.getNoneIndent();
@@ -96,6 +96,12 @@ public class HaxeIndentProcessor {
       if (elementType == PARAMETER_LIST || elementType == EXPRESSION_LIST || elementType == CALL_EXPRESSION_LIST) {
         return Indent.getNormalIndent();
       }
+    }
+    if (parentType == FUNCTION_LITERAL && elementType == BLOCK_STATEMENT) {
+      return Indent.getNormalIndent();
+    }
+    if ((elementType == ODOT || elementType == OQUEST_DOT) && isChainedExpression(parentType)) {
+      return Indent.getNormalIndent();
     }
     if (parentType == FOR_STATEMENT && prevSiblingType == PRPAREN && elementType != BLOCK_STATEMENT) {
       return Indent.getNormalIndent();
@@ -143,6 +149,16 @@ public class HaxeIndentProcessor {
     result = result || type == SWITCH_BLOCK;
     result = result || type == SWITCH_CASE_BLOCK;
     return result;
+  }
+
+  private static boolean usesMethodBraceStyle(@Nullable IElementType type) {
+    return FUNCTION_DEFINITION.contains(type) && type != FUNCTION_LITERAL;
+  }
+
+  private static boolean isChainedExpression(@Nullable IElementType parentType) {
+    return parentType == REFERENCE_EXPRESSION
+           || parentType == CALL_EXPRESSION
+           || parentType == ARRAY_ACCESS_EXPRESSION;
   }
 
   private static boolean isAtFirstColumn(ASTNode node) {

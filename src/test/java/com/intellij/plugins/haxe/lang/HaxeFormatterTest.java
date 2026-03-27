@@ -247,6 +247,14 @@ public class HaxeFormatterTest extends HaxeCodeInsightFixtureTestCase {
   }
 
   @Test
+  public void testFunctionLiteralBraceStyle() throws Exception {
+    myTestStyleSettings.KEEP_LINE_BREAKS = true;
+    myTestStyleSettings.BRACE_STYLE = CommonCodeStyleSettings.END_OF_LINE;
+    myTestStyleSettings.METHOD_BRACE_STYLE = CommonCodeStyleSettings.NEXT_LINE;
+    doTest();
+  }
+
+  @Test
   public void testCommentAlignmentNormal() throws Exception {
     myTestStyleSettings.KEEP_LINE_BREAKS = true;
     myTestStyleSettings.KEEP_FIRST_COLUMN_COMMENT = false;
@@ -270,6 +278,11 @@ public class HaxeFormatterTest extends HaxeCodeInsightFixtureTestCase {
   public void testIndentSpaces() throws Exception {
     myTestStyleSettings.getIndentOptions().USE_TAB_CHARACTER = false;
     myTestStyleSettings.getIndentOptions().INDENT_SIZE = 3;
+    doTest();
+  }
+
+  @Test
+  public void testFunctionalChainIndent() throws Exception {
     doTest();
   }
 

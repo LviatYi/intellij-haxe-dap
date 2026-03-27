@@ -239,6 +239,14 @@ public class HaxeSpacingProcessor {
         return addSingleSpaceIf(mySettings.SPACE_BEFORE_METHOD_CALL_PARENTHESES);
       }
     }
+    if (elementType == CALL_EXPRESSION) {
+      if (type2 == CALL_EXPRESSION_LIST && shouldCompactSingleCallArgument(node2)) {
+        return Spacing.createSpacing(0, 0, 0, false, 0);
+      }
+      if (type1 == CALL_EXPRESSION_LIST && type2 == PRPAREN && shouldCompactSingleCallArgument(node1)) {
+        return Spacing.createSpacing(0, 0, 0, false, 0);
+      }
+    }
     if (elementType == SWITCH_STATEMENT) {
       if (type2 == PARENTHESIZED_EXPRESSION) {
         return addSingleSpaceIf(mySettings.SPACE_BEFORE_SWITCH_PARENTHESES);
@@ -249,6 +257,18 @@ public class HaxeSpacingProcessor {
     }
     if (type1 == OGREATER && type2 == OASSIGN) {
       return addSingleSpaceIf(false);
+    }
+
+    if (elementType == BLOCK_STATEMENT && parentType == FUNCTION_LITERAL && !shouldCompactFunctionLiteralBlock(myNode)) {
+      if (type1 == PLCURLY && type2 != PRCURLY) {
+        return Spacing.createSpacing(0, 0, 1, true, mySettings.KEEP_BLANK_LINES_IN_CODE);
+      }
+      if (type1 == OSEMI && type2 != PRCURLY) {
+        return Spacing.createSpacing(0, 0, 1, true, mySettings.KEEP_BLANK_LINES_IN_CODE);
+      }
+      if (type2 == PRCURLY && type1 != PLCURLY) {
+        return Spacing.createSpacing(0, 0, 1, true, mySettings.KEEP_BLANK_LINES_IN_CODE);
+      }
     }
 
     //
@@ -284,7 +304,13 @@ public class HaxeSpacingProcessor {
       else if (elementType == CATCH_STATEMENT) {
         return setBraceSpace(mySettings.SPACE_BEFORE_CATCH_LBRACE, mySettings.BRACE_STYLE, child1.getTextRange());
       }
-      else if (FUNCTION_DEFINITION.contains(elementType)) {
+      else if (elementType == FUNCTION_LITERAL) {
+        if (shouldUseCompactFunctionLiteral(child1, child2)) {
+          return Spacing.createSpacing(0, 0, 0, false, 0);
+        }
+        return setBraceSpace(mySettings.SPACE_BEFORE_METHOD_LBRACE, mySettings.METHOD_BRACE_STYLE, child1.getTextRange());
+      }
+      else if (usesMethodBraceStyle(elementType)) {
         return setBraceSpace(mySettings.SPACE_BEFORE_METHOD_LBRACE, mySettings.METHOD_BRACE_STYLE, child1.getTextRange());
       }
     }
@@ -457,6 +483,10 @@ public class HaxeSpacingProcessor {
       return addSingleSpaceIf(myHaxeCodeStyleSettings.SPACE_BEFORE_TYPE_REFERENCE_COLON);
     }
 
+    if (type1 == ODOT || type2 == ODOT || type1 == OQUEST_DOT || type2 == OQUEST_DOT) {
+      return Spacing.createSpacing(0, 0, 0, mySettings.KEEP_LINE_BREAKS, mySettings.KEEP_BLANK_LINES_IN_CODE);
+    }
+
     if (type1 == OARROW || type2 == OARROW) {
       return addSingleSpaceIf(myHaxeCodeStyleSettings.SPACE_AROUND_ARROW);
     }
@@ -550,5 +580,94 @@ public class HaxeSpacingProcessor {
 
   private boolean isMethodDeclarationOrConstructorDeclaration(IElementType type) {
     return type == METHOD_DECLARATION || type == CONSTRUCTOR_DECLARATION;
+  }
+
+  private boolean shouldCompactSingleCallArgument(ASTNode callExpressionList) {
+    if (callExpressionList == null || callExpressionList.getElementType() != CALL_EXPRESSION_LIST) {
+      return false;
+    }
+
+    ASTNode[] children = callExpressionList.getChildren(null);
+    int expressionCount = 0;
+    for (ASTNode child : children) {
+      IElementType type = child.getElementType();
+      if (WHITESPACES.contains(type) || COMMENTS.contains(type)) {
+        continue;
+      }
+      if (type == OCOMMA) {
+        return false;
+      }
+      expressionCount++;
+    }
+
+    return expressionCount == 1 && callExpressionList.getText().contains("->");
+  }
+
+  private boolean shouldUseCompactFunctionLiteral(Block leftBlock, Block blockStatement) {
+    if (!(leftBlock instanceof AbstractBlock) || !(blockStatement instanceof AbstractBlock)) {
+      return false;
+    }
+
+    ASTNode leftNode = ((AbstractBlock)leftBlock).getNode();
+    ASTNode blockNode = ((AbstractBlock)blockStatement).getNode();
+    if (blockNode == null || blockNode.getElementType() != BLOCK_STATEMENT) {
+      return false;
+    }
+    if (hasLineBreakBeforeInCurrentNode(blockNode)) {
+      return false;
+    }
+
+    return shouldCompactFunctionLiteralBlock(blockNode);
+  }
+
+  private int countBlockStatements(ASTNode blockNode) {
+    int count = 0;
+    for (ASTNode child = blockNode.getFirstChildNode(); child != null; child = child.getTreeNext()) {
+      IElementType type = child.getElementType();
+      if (type == PLCURLY || type == PRCURLY || WHITESPACES.contains(type) || COMMENTS.contains(type)) {
+        continue;
+      }
+      count++;
+    }
+    return count;
+  }
+
+  private boolean shouldCompactFunctionLiteralBlock(ASTNode blockNode) {
+    if (blockNode == null || blockNode.getElementType() != BLOCK_STATEMENT) {
+      return false;
+    }
+    if (blockNode.getText().contains("\n")) {
+      return false;
+    }
+    ASTNode parent = blockNode.getTreeParent();
+    if (parent != null && parent.getElementType() == FUNCTION_LITERAL && hasLineBreakBefore(parent, blockNode)) {
+      return false;
+    }
+    return countBlockStatements(blockNode) == 1;
+  }
+
+  private boolean hasLineBreakBeforeInCurrentNode(ASTNode node) {
+    return hasLineBreakBefore(myNode, node);
+  }
+
+  private boolean hasLineBreakBefore(ASTNode container, ASTNode node) {
+    if (container == null || node == null) {
+      return false;
+    }
+    CharSequence chars = container.getChars();
+    int end = node.getStartOffset() - container.getStartOffset();
+    if (end < 0 || end > chars.length()) {
+      return false;
+    }
+    for (int i = 0; i < end; i++) {
+      if (chars.charAt(i) == '\n') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean usesMethodBraceStyle(IElementType type) {
+    return FUNCTION_DEFINITION.contains(type) && type != FUNCTION_LITERAL;
   }
 }
