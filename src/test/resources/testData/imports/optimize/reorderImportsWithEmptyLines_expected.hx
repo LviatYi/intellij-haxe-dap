@@ -1,5 +1,5 @@
 import com.foo.IFoo;
-// Some useful comment
+
 import com.foo.Bar;
 import com.foo.Foo;
 

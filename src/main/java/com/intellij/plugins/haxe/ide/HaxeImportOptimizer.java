@@ -30,6 +30,7 @@ import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypeSets;
 import com.intellij.plugins.haxe.lang.lexer.HaxeTokenTypes;
 import com.intellij.plugins.haxe.lang.psi.HaxeFile;
 import com.intellij.plugins.haxe.lang.psi.HaxeImportStatement;
+import com.intellij.plugins.haxe.lang.psi.HaxeUsingStatement;
 import com.intellij.plugins.haxe.model.HaxeFileModel;
 import com.intellij.plugins.haxe.util.HaxeDebugTimeLog;
 import com.intellij.plugins.haxe.util.HaxeImportUtil;
@@ -70,7 +71,9 @@ public class HaxeImportOptimizer implements ImportOptimizer {
     HaxeDebugTimeLog timeLog = HaxeDebugTimeLog.startNew("optimizeImports for file " + file.getName(),
                                                          HaxeDebugTimeLog.Since.StartAndPrevious);
     removeUnusedImports(file);
+    PsiDocumentManager.getInstance(file.getProject()).commitAllDocuments();
     reorderImports2(file);
+    ensureBlankLineAfterLastImport(file);
 
     timeLog.stamp("Finished reordering imports.");
     timeLog.print();
@@ -150,21 +153,24 @@ public class HaxeImportOptimizer implements ImportOptimizer {
   }
 
   private static void reorderImports2(final PsiFile file) {
-    HaxeFileModel fileModel = HaxeFileModel.fromElement(file);
-    var macroIndex = MacroIndex.buildMacroIndex((HaxeFile)file);
-    List<HaxeImportStatement> allImports = fileModel == null ? new ArrayList<>() : fileModel.getImportStatements();
-    allImports = allImports.stream().filter(item -> {
-      int offset = item.getTextRange().getStartOffset();
-      return !macroIndex.isInMacro(offset);
-    }).toList();
+    HaxeFile haxeFile = (HaxeFile)file;
+    //var macroIndex = MacroIndex.buildMacroIndex(haxeFile);
+    List<List<HaxeImportStatement>> importSections = haxeFile.getImportStatementSections()
+      .stream()
+      //.map(section -> section
+      //  .stream()
+      //  .filter(item -> {
+      //    int offset = item.getTextRange().getStartOffset();
+      //    return !macroIndex.isInMacro(offset);
+      //  })
+      //  .toList()
+      //)
+      .filter(section -> section.size() > 1)
+      .toList();
 
-    if (allImports.size() < 2) {
+    if (importSections.isEmpty()) {
       return;
     }
-
-    final int firstImportAt = allImports.get(0).getStartOffsetInParent();
-    List<String> sortedImports = new ArrayList<>(allImports.stream().map(PsiElement::getText).toList());
-    sortedImports.sort(String::compareToIgnoreCase);
 
     final PsiDocumentManager psiDocumentManager = PsiDocumentManager.getInstance(file.getProject());
     final Document document = psiDocumentManager.getDocument(file);
@@ -173,26 +179,62 @@ public class HaxeImportOptimizer implements ImportOptimizer {
 
       /* This operation trims the document if necessary (e.g. it happens with "\n" at the very beginning).
          Need to reevaluate offsets here.
-       */
+      */
       documentManager.doPostponedOperationsAndUnblockDocument(document);
-      var docCharSeq = document.getCharsSequence();
 
-      for (int i = allImports.size() - 1; i >= 0; i--) {
-        var range = allImports.get(i).getTextRange();
-        int lineStart = document.getLineStartOffset(document.getLineNumber(range.getStartOffset()));
-        int lineEnd = document.getLineEndOffset(document.getLineNumber(range.getEndOffset()));
+      for (int sectionIndex = importSections.size() - 1; sectionIndex >= 0; sectionIndex--) {
+        List<HaxeImportStatement> importSection = importSections.get(sectionIndex);
+        List<String> sortedImports = new ArrayList<>(importSection.stream().map(PsiElement::getText).toList());
+        sortedImports.sort(String::compareToIgnoreCase);
 
-        int left = range.getStartOffset();
-        int right = range.getEndOffset();
-        while (left > lineStart && Character.isWhitespace(docCharSeq.charAt(left - 1))) left--;
-        while (right <= lineEnd && Character.isWhitespace(docCharSeq.charAt(right))) right++;
+        int sectionStart = importSection.get(0).getTextRange().getStartOffset();
+        int sectionEnd = importSection.get(importSection.size() - 1).getTextRange().getEndOffset();
 
-        document.deleteString(left, right);
+        document.deleteString(sectionStart, sectionEnd);
+        document.insertString(sectionStart, String.join("\n", sortedImports));
+        documentManager.doPostponedOperationsAndUnblockDocument(document);
+        documentManager.commitDocument(document);
       }
-
-      documentManager.doPostponedOperationsAndUnblockDocument(document);
-      document.insertString(firstImportAt, String.join("\n", sortedImports));
     }
+  }
+
+  private static void ensureBlankLineAfterLastImport(final PsiFile file) {
+    HaxeFile haxeFile = (HaxeFile)file;
+    List<HaxeImportStatement> importStatements = haxeFile.getImportStatements();
+    if (importStatements.isEmpty()) {
+      return;
+    }
+
+    HaxeImportStatement lastImport = importStatements.get(importStatements.size() - 1);
+    PsiElement nextSibling = lastImport.getNextSibling();
+    while (nextSibling instanceof PsiWhiteSpace) {
+      nextSibling = nextSibling.getNextSibling();
+    }
+
+    if (nextSibling == null
+        || nextSibling instanceof HaxeImportStatement
+        || nextSibling instanceof HaxeUsingStatement
+        || nextSibling instanceof PsiComment) {
+      return;
+    }
+
+    Document document = PsiDocumentManager.getInstance(file.getProject()).getDocument(file);
+    if (document == null) {
+      return;
+    }
+
+    PsiDocumentManager documentManager = PsiDocumentManager.getInstance(file.getProject());
+    documentManager.doPostponedOperationsAndUnblockDocument(document);
+
+    int whitespaceStart = lastImport.getTextRange().getEndOffset();
+    int whitespaceEnd = nextSibling.getTextRange().getStartOffset();
+    if (whitespaceEnd < whitespaceStart) {
+      return;
+    }
+
+    document.replaceString(whitespaceStart, whitespaceEnd, "\n\n");
+    documentManager.doPostponedOperationsAndUnblockDocument(document);
+    documentManager.commitDocument(document);
   }
 }
 

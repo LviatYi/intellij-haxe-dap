@@ -94,6 +94,16 @@ public class HaxeImportOptimizerTest extends HaxeCodeInsightFixtureTestCase {
   }
 
   @Test
+  public void testReorderImportsWithEmptyLines() throws Throwable {
+    runOptimizeAction("com/foo/Bar.hx", "com/foo/Foo.hx", "com/foo/IFoo.hx", "com/foo/Unused.hx");
+  }
+
+  @Test
+  public void testBlankLineAfterLastImport() throws Throwable {
+    runOptimizeAction("com/foo/Bar.hx", "com/foo/Foo.hx");
+  }
+
+  @Test
   public void testReorderImportsIssue493() throws Throwable {
     runOptimizeAction("js/Browser.hx", "js/Cookie.hx", "js/Lib.hx");
   }

@@ -138,6 +138,35 @@ public class HaxeFile extends PsiFileBase
   public List<HaxeImportStatement> getImportStatements() {
     return new ArrayList<>(getImportStatementsCached(this));
   }
+
+  public List<List<HaxeImportStatement>> getImportStatementSections() {
+    List<HaxeImportStatement> importStatements = getImportStatements();
+    if (importStatements.isEmpty()) {
+      return Collections.emptyList();
+    }
+
+    List<List<HaxeImportStatement>> sections = new ArrayList<>();
+    List<HaxeImportStatement> currentSection = new ArrayList<>();
+    currentSection.add(importStatements.getFirst());
+
+    String fileText = getText();
+    for (int i = 1; i < importStatements.size(); i++) {
+      HaxeImportStatement previous = importStatements.get(i - 1);
+      HaxeImportStatement current = importStatements.get(i);
+
+      String separatorText = fileText.substring(previous.getTextRange().getEndOffset(), current.getTextRange().getStartOffset());
+      if (isImportSectionSeparator(separatorText)) {
+        sections.add(currentSection);
+        currentSection = new ArrayList<>();
+      }
+
+      currentSection.add(current);
+    }
+
+    sections.add(currentSection);
+    return sections;
+  }
+
   public List<HaxeUsingStatement> getUsingStatements() {
     return new ArrayList<>(getUsingStatementsCached(this));
   }
@@ -162,5 +191,31 @@ public class HaxeFile extends PsiFileBase
     if(haxeFileModel != null) return haxeFileModel;
     haxeFileModel =new HaxeFileModel(this);
     return haxeFileModel;
+  }
+
+  private static boolean isImportSectionSeparator(@NotNull String textBetweenImports) {
+    int lineBreakCount = 0;
+
+    for (int i = 0; i < textBetweenImports.length(); i++) {
+      char current = textBetweenImports.charAt(i);
+      if (!Character.isWhitespace(current)) {
+        return true;
+      }
+
+      if (current == '\n') {
+        lineBreakCount++;
+      }
+      else if (current == '\r') {
+        if (i + 1 >= textBetweenImports.length() || textBetweenImports.charAt(i + 1) != '\n') {
+          lineBreakCount++;
+        }
+      }
+
+      if (lineBreakCount > 1) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }
