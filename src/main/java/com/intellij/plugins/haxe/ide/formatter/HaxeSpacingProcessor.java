@@ -483,6 +483,10 @@ public class HaxeSpacingProcessor {
       return addSingleSpaceIf(myHaxeCodeStyleSettings.SPACE_BEFORE_TYPE_REFERENCE_COLON);
     }
 
+    if ((type2 == ODOT || type2 == OQUEST_DOT) && shouldExpandLongChainedExpression()) {
+      return Spacing.createSpacing(0, 0, 1, false, 0);
+    }
+
     if (type1 == ODOT || type2 == ODOT || type1 == OQUEST_DOT || type2 == OQUEST_DOT) {
       return Spacing.createSpacing(0, 0, 0, mySettings.KEEP_LINE_BREAKS, mySettings.KEEP_BLANK_LINES_IN_CODE);
     }
@@ -644,6 +648,57 @@ public class HaxeSpacingProcessor {
       return false;
     }
     return countBlockStatements(blockNode) == 1;
+  }
+
+  private boolean shouldExpandLongChainedExpression() {
+    ASTNode chainRoot = findTopmostChainedExpression(myNode);
+    if (chainRoot == null) {
+      return false;
+    }
+
+    String text = chainRoot.getText();
+    if (text == null) {
+      return false;
+    }
+    int chainCount = 0;
+    for (int i = 0; i < text.length(); i++) {
+      if (text.charAt(i) == '.') {
+        chainCount++;
+      }
+    }
+
+    int rightMargin = Math.max(mySettings.RIGHT_MARGIN, 100);
+    return chainCount > 1 && hasLineExceedingMargin(text, rightMargin);
+  }
+
+  private ASTNode findTopmostChainedExpression(ASTNode node) {
+    if (node == null) {
+      return null;
+    }
+    ASTNode current = node;
+    if (!isChainedExpressionType(current.getElementType())) {
+      return null;
+    }
+    while (current.getTreeParent() != null && isChainedExpressionType(current.getTreeParent().getElementType())) {
+      current = current.getTreeParent();
+    }
+    return current;
+  }
+
+  private boolean isChainedExpressionType(IElementType type) {
+    return type == REFERENCE_EXPRESSION
+           || type == CALL_EXPRESSION
+           || type == ARRAY_ACCESS_EXPRESSION;
+  }
+
+  private boolean hasLineExceedingMargin(String text, int rightMargin) {
+    String[] lines = text.split("\\R", -1);
+    for (String line : lines) {
+      if (line.length() > rightMargin) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private boolean hasLineBreakBeforeInCurrentNode(ASTNode node) {
