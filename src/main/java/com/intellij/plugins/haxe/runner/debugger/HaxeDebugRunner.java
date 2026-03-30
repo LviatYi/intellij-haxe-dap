@@ -35,6 +35,7 @@ import com.intellij.icons.AllIcons;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.module.Module;
@@ -122,6 +123,15 @@ import java.util.regex.Pattern;
  */
 public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
   public static final String HAXE_DEBUG_RUNNER_ID = "HaxeDebugRunner";
+  private static final Logger LOG = Logger.getInstance(HaxeDebugRunner.class);
+
+  private enum DebugMessageSeverity {
+    DEBUG,
+    INFO,
+    IMPORTANT,
+    EXCEPTION,
+    PROTOCOL_ERROR
+  }
 
   @NotNull
   @Override
@@ -295,11 +305,11 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                // indicating that the debugger is waiting for the remote
                // process to start.
                if (remoteDebugging) {
-                 showInfoMessage
+                 showDebugMessage
                    (project, "Listening for debugged process " +
                              "on port " + port + " ... Press OK after " +
                              "remote debugged process has started.",
-                    "Haxe Debugger");
+                    DebugMessageSeverity.IMPORTANT);
                }
                // Else, start the being-debugged process and make the
                // local debug process instance aware of it.
@@ -354,11 +364,12 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         try {
           final DapDebugProcess debugProcess = new DapDebugProcess(session, project, module, port, remoteUrl);
           if (remoteUrl != null) {
-            showInfoMessage(project, "Listening for debugged process " +
-                                     "on port " +
-                                     port +
-                                     " ... Press OK after " +
-                                     "remote debugged process has started.", "Haxe Debugger");
+            showDebugMessage(project, "Listening for debugged process " +
+                                      "on port " +
+                                      port +
+                                      " ... Press OK after " +
+                                      "remote debugged process has started.",
+                             DebugMessageSeverity.IMPORTANT);
           }
           else {
             debugProcess.setExecutionResult(
@@ -502,15 +513,15 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     }
 
     private void info(String message) {
-      showInfoMessage(mProject, message, "Haxe Debugger");
+      showDebugMessage(mProject, message, DebugMessageSeverity.DEBUG);
     }
 
     private void warn(String message) {
-      showInfoMessage(mProject, message, "Haxe Debugger Warning");
+      showDebugMessage(mProject, message, DebugMessageSeverity.INFO);
     }
 
     private void error(String message) {
-      showInfoMessage(mProject, message, "Haxe Debugger Error");
+      showDebugMessage(mProject, message, DebugMessageSeverity.PROTOCOL_ERROR);
       this.stop();
     }
 
@@ -1522,15 +1533,15 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     }
 
     private void info(String message) {
-      showInfoMessage(project, message, "Haxe Debugger");
+      showDebugMessage(project, message, DebugMessageSeverity.DEBUG);
     }
 
     private void warn(String message) {
-      showInfoMessage(project, message, "Haxe Debugger Warning");
+      showDebugMessage(project, message, DebugMessageSeverity.INFO);
     }
 
     private void error(String message) {
-      showInfoMessage(project, message, "Haxe Debugger Error");
+      showDebugMessage(project, message, DebugMessageSeverity.PROTOCOL_ERROR);
       this.stop();
     }
 
@@ -1672,6 +1683,9 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               ApplicationManager.getApplication().invokeLater(() -> {
                 Messages.showErrorDialog(project, finalMsg, "Haxe Exception");
               });
+              showDebugMessage(project,
+                               StringUtil.isEmpty(finalMsg) ? "Exception stop." : finalMsg,
+                               DebugMessageSeverity.EXCEPTION);
               
               if (StringUtil.isEmpty(msg)) {
                 this.info("Exception stop." + msg);
@@ -2192,23 +2206,32 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     return packageName.replaceAll("\\.", "/") + "/" + fileName;
   }
 
-  private static void showInfoMessage(final Project project, final String message, final String title) {
-    System.out.println(title + ": " + message);
-    ApplicationManager.getApplication().invokeLater(new Runnable() {
-      @Override
-      public void run() {
-        if (false /* TODO: Get display behavior from the plugin configuration. */) {
-          // Put up a modal dialog.  Folks don't like this much, so this should not be the default.
-          Messages.showInfoMessage(project, message, title);
-        }
-        else {
-          // Show the error on the status bar.
-          StatusBarUtil.setStatusBarInfo(project, message);
-          // XXX: Should we log this, too??
-        }
-        // Add the output to the "Problems" pane.
+  private static void showDebugMessage(final Project project,
+                                       final String message,
+                                       final DebugMessageSeverity severity) {
+    String title = "Haxe Debugger";
+    switch (severity) {
+      case INFO -> title += " Warning";
+      case EXCEPTION -> title += " Exception";
+      case PROTOCOL_ERROR -> title += " Error";
+    }
+    String logMessage = title + ": " + message;
+    switch (severity) {
+      case DEBUG -> LOG.debug(logMessage);
+      case INFO, IMPORTANT -> LOG.info(logMessage);
+      case EXCEPTION, PROTOCOL_ERROR -> LOG.warn(logMessage);
+    }
+
+    ApplicationManager.getApplication().invokeLater(() -> {
+      if (severity == DebugMessageSeverity.IMPORTANT
+          || severity == DebugMessageSeverity.EXCEPTION
+          || severity == DebugMessageSeverity.PROTOCOL_ERROR) {
+        StatusBarUtil.setStatusBarInfo(project, message);
+      }
+      if (severity == DebugMessageSeverity.EXCEPTION
+          || severity == DebugMessageSeverity.PROTOCOL_ERROR) {
         ProblemsView.getInstance(project)
-          .addMessage(MessageCategory.INFORMATION, new String[]{message}, null, null, null, null, UUID.randomUUID());
+          .addMessage(MessageCategory.ERROR, new String[]{message}, null, null, null, null, UUID.randomUUID());
       }
     });
   }
