@@ -1520,6 +1520,12 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           catch (IOException ignored) {
           }
         }
+        if (writeQueue != null) {
+          writeQueue.dismissLastTasks(0);
+        }
+        callbacks.clear();
+        deferredQueue.clear();
+        runToCursorPosition = null;
       }
     }
 
