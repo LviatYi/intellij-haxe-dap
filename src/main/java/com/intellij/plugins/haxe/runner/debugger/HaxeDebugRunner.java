@@ -31,6 +31,7 @@ import com.intellij.execution.runners.GenericProgramRunner;
 import com.intellij.execution.ui.ConsoleView;
 import com.intellij.execution.ui.ConsoleViewContentType;
 import com.intellij.execution.ui.ExecutionConsole;
+import com.intellij.execution.ui.RunContentManager;
 import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
@@ -2302,7 +2303,10 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     }
 
     ApplicationManager.getApplication().invokeLater(() -> {
-      debugSession.showSessionTab();
+      RunContentDescriptor descriptor = debugSession.getRunContentDescriptorIfInitialized();
+      if (descriptor != null) {
+        RunContentManager.getInstance(debugSession.getProject()).selectRunContent(descriptor);
+      }
       XDebugSessionTab.showFramesView(debugSession);
     });
   }
