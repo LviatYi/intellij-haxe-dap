@@ -7,6 +7,9 @@
 * Changed: Merge IntelliJ-Haxe 1.7.11 into this repo. [What's new](https://github.com/HaxeFoundation/intellij-haxe/releases/tag/release-1.7.11)
 * Changed: Optimize the imports sorting by blocks to avoid disrupting the user sorting.
 * Changed: Optimize the formatter logic for functional calls.
+* Changed: Optimize debugging error output.
+* Changed: Optimize the breakpoint experience of the debugger. Now, the Threads & Variables TAB will be opened directly after a breakpoint
+  is hit.
 * Fixed: buffer clearing in DapHaxeProtocol.
 
 ## 2.1.0(1.7.10)

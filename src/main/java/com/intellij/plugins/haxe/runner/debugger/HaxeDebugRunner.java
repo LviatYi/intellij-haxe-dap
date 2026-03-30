@@ -18,7 +18,6 @@
  */
 package com.intellij.plugins.haxe.runner.debugger;
 
-import com.intellij.compiler.ProblemsView;
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.ExecutionResult;
 import com.intellij.execution.Executor;
@@ -29,6 +28,8 @@ import com.intellij.execution.executors.DefaultDebugExecutor;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.runners.GenericProgramRunner;
+import com.intellij.execution.ui.ConsoleView;
+import com.intellij.execution.ui.ConsoleViewContentType;
 import com.intellij.execution.ui.ExecutionConsole;
 import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.icons.AllIcons;
@@ -87,13 +88,14 @@ import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.util.concurrency.QueueProcessor;
 import com.intellij.util.io.URLUtil;
-import com.intellij.util.ui.MessageCategory;
 import com.intellij.xdebugger.*;
 import com.intellij.xdebugger.breakpoints.*;
 import com.intellij.xdebugger.evaluation.XDebuggerEditorsProvider;
 import com.intellij.xdebugger.evaluation.XDebuggerEvaluator;
 import com.intellij.xdebugger.frame.*;
+import com.intellij.xdebugger.impl.XDebugSessionImpl;
 import com.intellij.xdebugger.impl.XSourcePositionImpl;
+import com.intellij.xdebugger.impl.ui.XDebugSessionTab;
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl;
 import debugger.*;
 import haxe.root.JavaProtocol;
@@ -522,7 +524,17 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
 
     private void error(String message) {
       showDebugMessage(mProject, message, DebugMessageSeverity.PROTOCOL_ERROR);
+      reportSessionError(message);
       this.stop();
+    }
+
+    private void reportSessionError(String message) {
+      getSession().reportError(message);
+      ConsoleView consoleView = getSession().getConsoleView();
+      if (consoleView != null) {
+        consoleView.print("\n\n", ConsoleViewContentType.ERROR_OUTPUT);
+        consoleView.print(message + "\n", ConsoleViewContentType.ERROR_OUTPUT);
+      }
     }
 
     private void expectOK(debugger.Command command) {
@@ -554,6 +566,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                                 (new SuspendContext(DebugProcess.this.mProject,
                                                     DebugProcess.this.mModule,
                                                     message));
+                              focusDebugSession(getSession());
                             }
                           });
     }
@@ -1525,6 +1538,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
         }
         callbacks.clear();
         deferredQueue.clear();
+        resolvedSourceCache.clear();
         runToCursorPosition = null;
       }
     }
@@ -1548,7 +1562,17 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
 
     private void error(String message) {
       showDebugMessage(project, message, DebugMessageSeverity.PROTOCOL_ERROR);
+      reportSessionError(message);
       this.stop();
+    }
+
+    private void reportSessionError(String message) {
+      getSession().reportError(message);
+      ConsoleView consoleView = getSession().getConsoleView();
+      if (consoleView != null) {
+        consoleView.print("\n", ConsoleViewContentType.ERROR_OUTPUT);
+        consoleView.print(message + "\n", ConsoleViewContentType.ERROR_OUTPUT);
+      }
     }
 
     private <PT> void expectOK(DapHaxeCommand<PT> command) {
@@ -1692,6 +1716,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
               showDebugMessage(project,
                                StringUtil.isEmpty(finalMsg) ? "Exception stop." : finalMsg,
                                DebugMessageSeverity.EXCEPTION);
+              reportSessionError(StringUtil.isEmpty(finalMsg) ? "Exception stop." : finalMsg);
               
               if (StringUtil.isEmpty(msg)) {
                 this.info("Exception stop." + msg);
@@ -1764,6 +1789,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
                                                           new SuspendContext(DapDebugProcess.this.project,
                                                                              DapDebugProcess.this.module,
                                                                              message));
+                                                        focusDebugSession(getSession());
                                                       });
     }
 
@@ -1830,6 +1856,100 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
       this.expectOK(cmd);
     }
 
+    @Nullable
+    private VirtualFile resolveSourceFile(String relativePath) {
+      Optional<VirtualFile> cachedFile = resolvedSourceCache.get(relativePath);
+      if (cachedFile != null) {
+        return cachedFile.orElse(null);
+      }
+
+      VirtualFile file = findProjectSourceFile(relativePath);
+      if (file == null) {
+        file = findClasspathSourceFile(relativePath);
+      }
+      if (file == null) {
+        file = findIndexedSourceFile(relativePath);
+      }
+
+      if (file != null) {
+        file = HaxeFileUtil.getCanonicalFile(file);
+      }
+
+      resolvedSourceCache.put(relativePath, Optional.ofNullable(file));
+      return file;
+    }
+
+    @Nullable
+    private VirtualFile findProjectSourceFile(String relativePath) {
+      VirtualFileManager vfm = VirtualFileManager.getInstance();
+      VirtualFile file = vfm.findFileByUrl(VirtualFileManager.constructUrl(URLUtil.FILE_PROTOCOL, relativePath));
+      if (file != null && file.exists()) {
+        return file;
+      }
+
+      ModuleRootManager mrm = ModuleRootManager.getInstance(module);
+      for (String rootUrl : mrm.getSourceRootUrls()) {
+        VirtualFile sourceFile = vfm.findFileByUrl(rootUrl + "/" + relativePath);
+        if (sourceFile != null && sourceFile.exists()) {
+          return sourceFile;
+        }
+      }
+      return null;
+    }
+
+    @Nullable
+    private VirtualFile findClasspathSourceFile(String relativePath) {
+      VirtualFile file = HaxelibClasspathUtils.findFileOnClasspath(module, relativePath);
+      return file != null && file.exists() ? file : null;
+    }
+
+    @Nullable
+    private VirtualFile findIndexedSourceFile(String relativePath) {
+      String fileName = VfsUtil.extractFileName(relativePath);
+      if (fileName == null) {
+        fileName = relativePath;
+      }
+
+      final String fileNameToLookFor = fileName;
+      final Collection<VirtualFile> files =
+        ApplicationManager.getApplication().runReadAction((Computable<Collection<VirtualFile>>)() -> {
+          var files1 =
+            FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.moduleScope(module));
+          if (files1.isEmpty()) {
+            files1 =
+              FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.moduleWithDependenciesScope(module));
+          }
+          if (files1.isEmpty()) {
+            files1 =
+              FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.moduleWithLibrariesScope(module));
+          }
+          if (files1.isEmpty()) {
+            files1 = FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.allScope(project));
+          }
+          return files1;
+        });
+
+      if (files.isEmpty()) {
+        return null;
+      }
+
+      Collection<VirtualFile> matches = new HashSet<>();
+      for (VirtualFile file : files) {
+        if (file.getPath().endsWith(relativePath)) {
+          matches.add(file);
+        }
+      }
+
+      if (matches.isEmpty()) {
+        return null;
+      }
+      if (matches.size() == 1) {
+        VirtualFile possible = matches.iterator().next();
+        return possible.isValid() ? possible : null;
+      }
+      return HaxelibClasspathUtils.findFirstFileOnClasspath(module, matches);
+    }
+
     private class SuspendContext extends XSuspendContext {
       public SuspendContext(Project project, Module module, DapHaxeMessage<ThreadInfo, StackTraceInfo[]> message) {
         var list = new Vector<XExecutionStack>();
@@ -1871,69 +1991,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     private class StackFrame extends XStackFrame {
       public StackFrame(final Project project, final Module module, StackTraceInfo frame) {
         frameInfo = frame;
-
-        VirtualFileManager vfm = VirtualFileManager.getInstance();
-        VirtualFile file = vfm.findFileByUrl(VirtualFileManager.constructUrl(URLUtil.FILE_PROTOCOL, frameInfo.source));
-
-        if (null == file || !file.exists()) {
-          ModuleRootManager mrm = ModuleRootManager.getInstance(module);
-          for (var rootUrl : mrm.getSourceRootUrls()) {
-            var f = vfm.findFileByUrl(rootUrl + "/" + frameInfo.source);
-            if (f != null && f.exists()) {
-              file = f;
-              break;
-            }
-          }
-        }
-
-        if (null == file || !file.exists()) {
-          String fileName = VfsUtil.extractFileName(frameInfo.source);
-          if (fileName == null) {
-            fileName = frameInfo.source;
-          }
-
-          final String fileNameToLookFor = fileName;
-          final Collection<VirtualFile> files =
-            ApplicationManager.getApplication().runReadAction((Computable<Collection<VirtualFile>>)() -> {
-              var files1 =
-                FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.moduleScope(module));
-              if (files1.isEmpty()) {
-                files1 =
-                  FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.moduleWithDependenciesScope(module));
-              }
-              if (files1.isEmpty()) {
-                files1 =
-                  FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.moduleWithLibrariesScope(module));
-              }
-              if (files1.isEmpty()) {
-                files1 = FilenameIndex.getVirtualFilesByName(fileNameToLookFor, GlobalSearchScope.allScope(project));
-              }
-              return files1;
-            });
-
-          Collection<VirtualFile> matches = new HashSet<VirtualFile>();
-          if (!files.isEmpty()) {
-            for (VirtualFile f : files) {
-              if (f.getPath().endsWith(frameInfo.source)) {
-                matches.add(f);
-              }
-            }
-          }
-          if (matches.isEmpty()) {
-            file = HaxelibClasspathUtils.findFileOnClasspath(module, frameInfo.source);
-          }
-          else if (matches.size() == 1) {
-            VirtualFile possible = matches.iterator().next();
-            file = possible.isValid() ? possible : HaxelibClasspathUtils.findFileOnClasspath(module, possible.toString());
-          }
-          else {
-            file = HaxelibClasspathUtils.findFirstFileOnClasspath(module, matches);
-          }
-        }
-
-        if (null != file) {
-          file = HaxeFileUtil.getCanonicalFile(file);
-        }
+        VirtualFile file = DapDebugProcess.this.resolveSourceFile(frameInfo.source);
 
         sourcePosition = XSourcePositionImpl.create(file, frameInfo.line - 1);
       }
@@ -2193,6 +2251,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     public int nextRequestId = 1;
     private Map<Integer, DapHaxeProtocol.CommandCallback> callbacks = new HashMap<>();
     private boolean waitForPaused = false;
+    private final Map<String, Optional<VirtualFile>> resolvedSourceCache = new HashMap<>();
 
     @Nullable private XSourcePosition runToCursorPosition = null;
   }
@@ -2234,11 +2293,17 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           || severity == DebugMessageSeverity.PROTOCOL_ERROR) {
         StatusBarUtil.setStatusBarInfo(project, message);
       }
-      if (severity == DebugMessageSeverity.EXCEPTION
-          || severity == DebugMessageSeverity.PROTOCOL_ERROR) {
-        ProblemsView.getInstance(project)
-          .addMessage(MessageCategory.ERROR, new String[]{message}, null, null, null, null, UUID.randomUUID());
-      }
+    });
+  }
+
+  private static void focusDebugSession(XDebugSession session) {
+    if (!(session instanceof XDebugSessionImpl debugSession)) {
+      return;
+    }
+
+    ApplicationManager.getApplication().invokeLater(() -> {
+      debugSession.showSessionTab();
+      XDebugSessionTab.showFramesView(debugSession);
     });
   }
 
