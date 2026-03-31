@@ -10,6 +10,7 @@
 * Changed: Optimize debugging error output.
 * Changed: Optimize the breakpoint experience of the debugger. Now, the Threads & Variables TAB will be opened directly after a breakpoint
   is hit.
+* Changed: Reduce the number of invalid resolves in HaxeAnnotatingVisitor.
 * Fixed: buffer clearing in DapHaxeProtocol.
 
 ## 2.1.0(1.7.10)

@@ -26,6 +26,7 @@ import com.intellij.plugins.haxe.metadata.psi.HaxeMeta;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -47,9 +48,11 @@ public abstract class HaxeAnnotatingVisitor extends HaxeVisitor {
 
     if (isInsidePackageStatement(reference) || isBuiltInMethod(reference)) return;
 
-    checkDeprecatedVarCall(reference);
+    var resolve = reference.resolve();
 
-    if (reference.resolve() == null) {
+    checkDeprecatedVarCall(reference, resolve);
+
+    if (resolve == null) {
       handleUnresolvedReference(reference);
     }
 
@@ -119,7 +122,11 @@ public abstract class HaxeAnnotatingVisitor extends HaxeVisitor {
   }
 
   private void checkDeprecatedVarCall(HaxeReferenceExpression referenceExpression) {
-    PsiElement reference = referenceExpression.resolve();
+    checkDeprecatedVarCall(referenceExpression, null);
+  }
+
+  private void checkDeprecatedVarCall(HaxeReferenceExpression referenceExpression, @Nullable PsiElement resolve) {
+    PsiElement reference = resolve != null ? resolve : referenceExpression.resolve();
 
     if (reference instanceof HaxeFieldDeclaration varDeclaration) {
       if (varDeclaration.hasCompileTimeMetadata(HaxeMeta.DEPRECATED)) {
