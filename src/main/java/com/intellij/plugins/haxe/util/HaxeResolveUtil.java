@@ -1191,31 +1191,35 @@ public class HaxeResolveUtil {
   public static PsiElement searchInSamePackage(@NotNull HaxeFileModel file, @NotNull String name, boolean checkForEnumValues, boolean expectedEnumIsConstructor) {
     final HaxePackageModel packageModel = file.getPackageModel();
     if (packageModel != null) {
-      // TODO make index of package members
+      HaxeClassModel samePackageClass = packageModel.getCurrentPackageMainClassModel(name);
+      if (samePackageClass != null) {
+        return samePackageClass.getBasePsi();
+      }
+
+      if (!checkForEnumValues) {
+        return null;
+      }
+
       List<HaxeModel> exposedMembers = packageModel.getModulesMainClass();
       for (HaxeModel model : exposedMembers) {
-        if (name.equals(model.getName())) {
-          return model.getBasePsi();
-        }else if (checkForEnumValues) {
-          if (model instanceof HaxeClassModel classModel) {
-            HaxeModel possibleModel = typeDefRecursionGuard.doPreventingRecursion(classModel.getPsi(), true, () -> tryResolveTypeDefClass(classModel));
-            if (possibleModel != null )model = possibleModel;
-          }
-          if (model instanceof HaxeEnumModel enumModel) {
-            Optional<HaxeEnumValueModel> match = enumModel.getValues().stream().filter(m -> name.equals(m.getName())).findFirst();
-            if (match.isPresent()){
-              HaxeEnumValueModel valueModel = match.get();
-              if (valueModel instanceof  HaxeEnumValueFieldModel enumValueFieldModel) {
-                if(expectedEnumIsConstructor) continue;
-                if(enumValueFieldModel.isAbstractType()) {
-                  return enumValueFieldModel.getAbstractEnumValuePsi().getComponentName();
-                }else {
-                  return enumValueFieldModel.getEnumValuePsi().getComponentName();
-                }
-              }else if (valueModel instanceof  HaxeEnumValueConstructorModel constructorModel) {
-                if(!expectedEnumIsConstructor) continue;
-                return constructorModel.getEnumValuePsi().getComponentName();
+        if (model instanceof HaxeClassModel classModel) {
+          HaxeModel possibleModel = typeDefRecursionGuard.doPreventingRecursion(classModel.getPsi(), true, () -> tryResolveTypeDefClass(classModel));
+          if (possibleModel != null )model = possibleModel;
+        }
+        if (model instanceof HaxeEnumModel enumModel) {
+          Optional<HaxeEnumValueModel> match = enumModel.getValues().stream().filter(m -> name.equals(m.getName())).findFirst();
+          if (match.isPresent()){
+            HaxeEnumValueModel valueModel = match.get();
+            if (valueModel instanceof  HaxeEnumValueFieldModel enumValueFieldModel) {
+              if(expectedEnumIsConstructor) continue;
+              if(enumValueFieldModel.isAbstractType()) {
+                return enumValueFieldModel.getAbstractEnumValuePsi().getComponentName();
+              }else {
+                return enumValueFieldModel.getEnumValuePsi().getComponentName();
               }
+            }else if (valueModel instanceof  HaxeEnumValueConstructorModel constructorModel) {
+              if(!expectedEnumIsConstructor) continue;
+              return constructorModel.getEnumValuePsi().getComponentName();
             }
           }
         }

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 2.1.2(1.7.11)
+
+* Changed: implement caching for main class model retrieval in HaxePackageModel.
+
 ## 2.1.1(1.7.11)
 
 * Changed: Merge IntelliJ-Haxe 1.7.11 into this repo. [What's new](https://github.com/HaxeFoundation/intellij-haxe/releases/tag/release-1.7.11)

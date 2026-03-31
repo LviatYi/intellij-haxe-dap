@@ -23,6 +23,9 @@ import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.util.CachedValueProvider;
+import com.intellij.psi.util.CachedValuesManager;
+import com.intellij.psi.util.PsiModificationTracker;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -166,6 +169,23 @@ public class HaxePackageModel implements HaxeExposableModel {
     return null;
   }
 
+  @Nullable
+  public HaxeClassModel getCurrentPackageMainClassModel(@NotNull String className) {
+    String fileName = HaxeNameUtils.classNameToFileName(className);
+    PsiDirectory directory = root.access(path);
+    if (directory == null || !directory.isValid()) {
+      return null;
+    }
+
+    PsiFile file = directory.findFile(fileName + ".hx");
+    if (!(file instanceof HaxeFile haxeFile) || !file.isValid()) {
+      return null;
+    }
+
+    HaxeFileModel fileModel = HaxeFileModel.fromElement(haxeFile);
+    return fileModel != null ? fileModel.getMainClassModel() : null;
+  }
+
   @NotNull
   @Override
   public List<HaxeModel> getExposedMembers() {
@@ -188,22 +208,33 @@ public class HaxePackageModel implements HaxeExposableModel {
   @NotNull
   public List<HaxeModel> getModulesMainClass() {
     PsiDirectory directory = root.access(path);
-    if (directory != null) {
-      PsiFile[] files = directory.getFiles();
+    if (directory != null && directory.isValid()) {
+      return CachedValuesManager.getCachedValue(directory, () ->
+        new CachedValueProvider.Result<>(
+          getModulesMainClassCached(directory),
+          directory,
+          PsiModificationTracker.MODIFICATION_COUNT
+        )
+      );
+    }
+    return Collections.emptyList();
+  }
 
-      List<HaxeModel>  result = new ArrayList<>();
-      for(PsiFile file : files) {
-        if( file instanceof HaxeFile) {
-          HaxeFileModel fileModel = HaxeFileModel.fromElement(file);
-          if(fileModel != null) {
-            HaxeClassModel mainClassModel = fileModel.getMainClassModel();
-            if(mainClassModel != null)result.add(mainClassModel);
+  @NotNull
+  private static List<HaxeModel> getModulesMainClassCached(@NotNull PsiDirectory directory) {
+    List<HaxeModel> result = new ArrayList<>();
+    for (PsiFile file : directory.getFiles()) {
+      if (file instanceof HaxeFile haxeFile) {
+        HaxeFileModel fileModel = HaxeFileModel.fromElement(haxeFile);
+        if (fileModel != null) {
+          HaxeClassModel mainClassModel = fileModel.getMainClassModel();
+          if (mainClassModel != null) {
+            result.add(mainClassModel);
           }
         }
       }
-      return result;
     }
-    return Collections.emptyList();
+    return List.copyOf(result);
   }
 
   @Override
