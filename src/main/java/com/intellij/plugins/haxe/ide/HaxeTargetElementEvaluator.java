@@ -20,8 +20,6 @@ import com.intellij.codeInsight.TargetElementEvaluatorEx2;
 import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.plugins.haxe.lang.psi.*;
-import com.intellij.plugins.haxe.model.HaxeClassModel;
-import com.intellij.plugins.haxe.model.HaxeMethodModel;
 import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
@@ -43,7 +41,7 @@ public class HaxeTargetElementEvaluator extends TargetElementEvaluatorEx2 {
     if (ref != null && refElement != null) {
       if (refElement instanceof HaxeClass) {
         HaxeNewExpression newExpression = PsiTreeUtil.getParentOfType(ref.getElement(), HaxeNewExpression.class);
-        if (newExpression != null) {
+        if (newExpression != null && isConstructorTargetReference(ref, newExpression)) {
           // new expression resolves to constructor (HaxeResolver makes sure to find correct overload)
           return newExpression.resolve();
         }
@@ -57,5 +55,12 @@ public class HaxeTargetElementEvaluator extends TargetElementEvaluatorEx2 {
   @Override
   public PsiElement getElementByReference(@NotNull PsiReference ref, int flags) {
     return ref.resolve();
+  }
+
+  private static boolean isConstructorTargetReference(@NotNull PsiReference ref, @NotNull HaxeNewExpression newExpression) {
+    HaxeType type = newExpression.getType();
+
+    HaxeReferenceExpression targetReference = type.getReferenceExpression();
+    return ref.getElement() == targetReference;
   }
 }

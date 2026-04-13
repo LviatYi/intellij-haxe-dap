@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+* Fixed: When attempting to jump to a type passed as a parameter in the constructor list, it would jump to the constructor definition
+  instead of the parameter definition of that type.
+
 ## 2.1.2(1.7.11)
 
 * Changed: implement caching for main class model retrieval in HaxePackageModel.
