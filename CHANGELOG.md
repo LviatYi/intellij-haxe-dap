@@ -4,6 +4,7 @@
 
 * Fixed: When attempting to jump to a type passed as a parameter in the constructor list, it would jump to the constructor definition
   instead of the parameter definition of that type.
+* Changed: Allow Import Optimizer running in lib files when they are writable.
 
 ## 2.1.2(1.7.11)
 

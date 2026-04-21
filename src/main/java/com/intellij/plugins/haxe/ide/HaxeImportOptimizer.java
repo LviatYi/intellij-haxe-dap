@@ -22,7 +22,6 @@ package com.intellij.plugins.haxe.ide;
 import com.intellij.injected.editor.VirtualFileWindow;
 import com.intellij.lang.ImportOptimizer;
 import com.intellij.openapi.editor.Document;
-import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -60,7 +59,10 @@ public class HaxeImportOptimizer implements ImportOptimizer {
   public Runnable processFile(final PsiFile file) {
     VirtualFile vFile = file.getVirtualFile();
     if (vFile instanceof VirtualFileWindow) vFile = ((VirtualFileWindow)vFile).getDelegate();
-    if (vFile == null || !ProjectRootManager.getInstance(file.getProject()).getFileIndex().isInSourceContent(vFile)) {
+    // Allow optimization for writable files, regardless of whether they are in source content.
+    // This permits locally-maintained library files to be optimized while still protecting
+    // read-only libraries and caches from unintended modification.
+    if (vFile == null || !vFile.isWritable()) {
       return EmptyRunnable.INSTANCE;
     }
 
