@@ -3,7 +3,6 @@ Suggested title | 建议标题:
 [BUG] Short summary of the issue
 -->
 
-/title [BUG] 
 /label ~bug
 
 ## Description | 描述

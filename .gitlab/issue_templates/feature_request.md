@@ -3,7 +3,6 @@ Suggested title | 建议标题:
 [FEATURE] Short summary of the request
 -->
 
-/title [FEATURE] 
 /label ~enhancement
 
 ## Description | 描述
