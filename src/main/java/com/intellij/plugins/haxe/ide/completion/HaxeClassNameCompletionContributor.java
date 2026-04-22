@@ -65,9 +65,14 @@ public class HaxeClassNameCompletionContributor extends CompletionContributor {
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
-               HaxeReference reference = PsiTreeUtil.getParentOfType(parameters.getPosition(), HaxeReference.class);
-               String packagePrefix = reference != null && reference.isQualified() ? reference.getQualifier().getText() : null;
-               addVariantsFromIndex(result, parameters.getOriginalFile(), packagePrefix, FULL_PATH_INSERT_HANDLER);
+               long start = HaxeCompletionPerformanceTracker.now();
+               try {
+                 HaxeReference reference = PsiTreeUtil.getParentOfType(parameters.getPosition(), HaxeReference.class);
+                 String packagePrefix = reference != null && reference.isQualified() ? reference.getQualifier().getText() : null;
+                 addVariantsFromIndex(result, parameters.getOriginalFile(), packagePrefix, FULL_PATH_INSERT_HANDLER);
+               } finally {
+                 HaxeCompletionPerformanceTracker.recordContributor("HaxeClassNameCompletionContributor#import", parameters, start);
+               }
              }
            });
 
@@ -78,10 +83,15 @@ public class HaxeClassNameCompletionContributor extends CompletionContributor {
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
-               final PsiFile file = parameters.getOriginalFile();
+               long start = HaxeCompletionPerformanceTracker.now();
+               try {
+                 final PsiFile file = parameters.getOriginalFile();
 
-               addVariantsFromIndex(result, file, null, CLASS_INSERT_HANDLER);
-               addVariantsFromImports(result, file);
+                 addVariantsFromIndex(result, file, null, CLASS_INSERT_HANDLER);
+                 addVariantsFromImports(result, file);
+               } finally {
+                 HaxeCompletionPerformanceTracker.recordContributor("HaxeClassNameCompletionContributor#basic", parameters, start);
+               }
              }
            });
 
@@ -92,10 +102,15 @@ public class HaxeClassNameCompletionContributor extends CompletionContributor {
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
-               final PsiFile file = parameters.getOriginalFile();
+               long start = HaxeCompletionPerformanceTracker.now();
+               try {
+                 final PsiFile file = parameters.getOriginalFile();
 
-               addVariantsFromIndex(result, file, null, CLASS_INSERT_HANDLER);
-               addVariantsFromImports(result, file);
+                 addVariantsFromIndex(result, file, null, CLASS_INSERT_HANDLER);
+                 addVariantsFromImports(result, file);
+               } finally {
+                 HaxeCompletionPerformanceTracker.recordContributor("HaxeClassNameCompletionContributor#smart", parameters, start);
+               }
              }
            });
 
@@ -106,11 +121,16 @@ public class HaxeClassNameCompletionContributor extends CompletionContributor {
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
-               HaxeReference leftReference =
-                 HaxeResolveUtil.getLeftReference(PsiTreeUtil.getParentOfType(parameters.getPosition(), HaxeReference.class));
-               PsiElement leftTarget = leftReference != null ? leftReference.resolve() : null;
-               if (leftTarget instanceof PsiPackage) {
-                 addVariantsFromIndex(result, parameters.getOriginalFile(), ((PsiPackage)leftTarget).getQualifiedName(), null);
+               long start = HaxeCompletionPerformanceTracker.now();
+               try {
+                 HaxeReference leftReference =
+                   HaxeResolveUtil.getLeftReference(PsiTreeUtil.getParentOfType(parameters.getPosition(), HaxeReference.class));
+                 PsiElement leftTarget = leftReference != null ? leftReference.resolve() : null;
+                 if (leftTarget instanceof PsiPackage) {
+                   addVariantsFromIndex(result, parameters.getOriginalFile(), ((PsiPackage)leftTarget).getQualifiedName(), null);
+                 }
+               } finally {
+                 HaxeCompletionPerformanceTracker.recordContributor("HaxeClassNameCompletionContributor#package", parameters, start);
                }
              }
            });

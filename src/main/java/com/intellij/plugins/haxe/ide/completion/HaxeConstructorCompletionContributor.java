@@ -44,8 +44,13 @@ public class HaxeConstructorCompletionContributor extends CompletionContributor 
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
-               final PsiFile file = parameters.getOriginalFile();
-               addVariantsFromIndex(result, file);
+               long start = HaxeCompletionPerformanceTracker.now();
+               try {
+                 final PsiFile file = parameters.getOriginalFile();
+                 addVariantsFromIndex(result, file);
+               } finally {
+                 HaxeCompletionPerformanceTracker.recordContributor("HaxeConstructorCompletionContributor", parameters, start);
+               }
              }
            });
   }

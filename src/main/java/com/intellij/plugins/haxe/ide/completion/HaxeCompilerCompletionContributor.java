@@ -83,29 +83,34 @@ public class HaxeCompilerCompletionContributor extends CompletionContributor {
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
-               PsiFile    file    = parameters.getOriginalFile();
+               long start = HaxeCompletionPerformanceTracker.now();
+               try {
+                 PsiFile file = parameters.getOriginalFile();
 
-               // Shortcut if we aren't using compiler completions.  Do this here instead
-               // of before the extend call. Otherwise, we'd have to restart if the state changes.
-               if (!useCompilerCompletion(file)) {
-                 log.debug("Skipping compiler completion.");
-                 return;
-               }
+                 // Shortcut if we aren't using compiler completions.  Do this here instead
+                 // of before the extend call. Otherwise, we'd have to restart if the state changes.
+                 if (!useCompilerCompletion(file)) {
+                   log.debug("Skipping compiler completion.");
+                   return;
+                 }
 
-               PsiElement element = parameters.getPosition();
-               Editor     editor  = parameters.getEditor();
-               myProject          = file.getProject();
+                 PsiElement element = parameters.getPosition();
+                 Editor editor = parameters.getEditor();
+                 myProject = file.getProject();
 
-               List<HaxeCompilerCompletionItem> completions =
+                 List<HaxeCompilerCompletionItem> completions =
                    compilerServices.getPossibleCompletions(file, element, editor);
-               for (HaxeCompilerCompletionItem completion : completions) {
-                 result.addElement(completion.toLookupElement());
-               }
+                 for (HaxeCompilerCompletionItem completion : completions) {
+                   result.addElement(completion.toLookupElement());
+                 }
 
-               // Add the error message to the result advertisement (the help line at
-               // the bottom of the selection dropdown).
-               if (null != myErrorMessage && ! myErrorMessage.isEmpty()) {
-                 result.addLookupAdvertisement(myErrorMessage);
+                 // Add the error message to the result advertisement (the help line at
+                 // the bottom of the selection dropdown).
+                 if (null != myErrorMessage && !myErrorMessage.isEmpty()) {
+                   result.addLookupAdvertisement(myErrorMessage);
+                 }
+               } finally {
+                 HaxeCompletionPerformanceTracker.recordContributor("HaxeCompilerCompletionContributor", parameters, start);
                }
              }
            });
@@ -130,9 +135,18 @@ public class HaxeCompilerCompletionContributor extends CompletionContributor {
     // Clear any old error messages
     myErrorMessage = null;
 
-    if (useCompilerCompletion(context.getFile())) {
-      // TODO: Don't save if we can use the compiler stdin.  (Haxe version 3.4)
-      saveEditsToDisk(context.getFile().getVirtualFile());
+    long start = HaxeCompletionPerformanceTracker.now();
+    try {
+      if (useCompilerCompletion(context.getFile())) {
+        // TODO: Don't save if we can use the compiler stdin.  (Haxe version 3.4)
+        saveEditsToDisk(context.getFile().getVirtualFile());
+      }
+    } finally {
+      long elapsedMs = HaxeCompletionPerformanceTracker.elapsedMillis(start);
+      if (elapsedMs >= 500) {
+        log.warn("Slow Haxe completion contributor setup: HaxeCompilerCompletionContributor#beforeCompletion took "
+                 + elapsedMs + "ms for " + context.getFile().getName());
+      }
     }
     super.beforeCompletion(context);
   }

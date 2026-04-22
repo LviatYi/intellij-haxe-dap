@@ -38,7 +38,12 @@ public class HaxeEnumValuesCompletionContributor extends CompletionContributor {
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
-               addEnumValuesFromCurrentFile(result, parameters.getOriginalPosition(), parameters.getOriginalFile());
+               long start = HaxeCompletionPerformanceTracker.now();
+               try {
+                 addEnumValuesFromCurrentFile(result, parameters.getOriginalPosition(), parameters.getOriginalFile());
+               } finally {
+                 HaxeCompletionPerformanceTracker.recordContributor("HaxeEnumValuesCompletionContributor", parameters, start);
+               }
              }
            });
   }

@@ -84,7 +84,12 @@ public class HaxeKeywordCompletionContributor extends CompletionContributor {
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
-               suggestKeywords(parameters.getPosition(), result, context);
+               long start = HaxeCompletionPerformanceTracker.now();
+               try {
+                 suggestKeywords(parameters.getPosition(), result, context);
+               } finally {
+                 HaxeCompletionPerformanceTracker.recordContributor("HaxeKeywordCompletionContributor", parameters, start);
+               }
              }
            });
   }

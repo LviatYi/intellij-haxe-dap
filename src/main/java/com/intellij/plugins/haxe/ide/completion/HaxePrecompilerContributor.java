@@ -23,7 +23,12 @@ public class HaxePrecompilerContributor extends CompletionContributor {
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            @NotNull ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
-               addDefinitions(result, parameters.getOriginalFile());
+               long start = HaxeCompletionPerformanceTracker.now();
+               try {
+                 addDefinitions(result, parameters.getOriginalFile());
+               } finally {
+                 HaxeCompletionPerformanceTracker.recordContributor("HaxePrecompilerContributor", parameters, start);
+               }
              }
            });
   }

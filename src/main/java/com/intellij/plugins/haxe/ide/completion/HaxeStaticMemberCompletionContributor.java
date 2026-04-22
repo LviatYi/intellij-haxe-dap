@@ -27,10 +27,15 @@ public class HaxeStaticMemberCompletionContributor extends CompletionContributor
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
-               final PsiFile file = parameters.getOriginalFile();
-               PsiElement position = parameters.getOriginalPosition();
-               position = position != null ? position : parameters.getPosition();
-               addVariantsFromIndex(result, file, position.getText());
+               long start = HaxeCompletionPerformanceTracker.now();
+               try {
+                 final PsiFile file = parameters.getOriginalFile();
+                 PsiElement position = parameters.getOriginalPosition();
+                 position = position != null ? position : parameters.getPosition();
+                 addVariantsFromIndex(result, file, position.getText());
+               } finally {
+                 HaxeCompletionPerformanceTracker.recordContributor("HaxeStaticMemberCompletionContributor", parameters, start);
+               }
              }
            });
   }

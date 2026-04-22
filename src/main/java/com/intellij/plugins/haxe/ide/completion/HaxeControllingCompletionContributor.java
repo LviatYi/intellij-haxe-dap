@@ -35,6 +35,7 @@ import com.intellij.psi.PsiFile;
 import com.intellij.util.ProcessingContext;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.LinkedHashMap;
 import java.util.*;
 
 /**
@@ -55,30 +56,45 @@ public class HaxeControllingCompletionContributor extends CompletionContributor 
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
+               HaxeCompletionPerformanceTracker.InvocationData invocation =
+                 HaxeCompletionPerformanceTracker.startInvocation("HaxeControllingCompletionContributor", parameters);
+               Map<String, Long> stageTimings = new LinkedHashMap<>();
+               Set<CompletionResult> filteredCompletions = Collections.emptySet();
+               try {
+                 long stageStart = HaxeCompletionPerformanceTracker.now();
+                 LinkedHashSet<CompletionResult> unfilteredCompletions = result.runRemainingContributors(parameters, false);
+                 stageTimings.put("runRemainingContributors", HaxeCompletionPerformanceTracker.elapsedMillis(stageStart));
 
-               // Run all of the providers so that we can capture all of their results.
-               LinkedHashSet<CompletionResult> unfilteredCompletions = result.runRemainingContributors(parameters, false);
-               // Now filter out duplicates, etc.
-               Set<CompletionResult> filteredCompletions = filter(parameters, unfilteredCompletions);
+                 stageStart = HaxeCompletionPerformanceTracker.now();
+                 filteredCompletions = filter(parameters, unfilteredCompletions);
+                 stageTimings.put("filter", HaxeCompletionPerformanceTracker.elapsedMillis(stageStart));
 
+                 stageStart = HaxeCompletionPerformanceTracker.now();
+                 filteredCompletions = HaxeCompletionPriorityUtil.calculatePriority(filteredCompletions, parameters);
+                 stageTimings.put("calculatePriority", HaxeCompletionPerformanceTracker.elapsedMillis(stageStart));
 
-               filteredCompletions =  HaxeCompletionPriorityUtil.calculatePriority(filteredCompletions, parameters);
-               filteredCompletions.stream()
-                 .map(HaxeCompletionPriorityUtil::convertToPrioritized)
-                 .forEach(result::passResult); // Add everything we want to keep to the result set.
+                 stageStart = HaxeCompletionPerformanceTracker.now();
+                 filteredCompletions.stream()
+                   .map(HaxeCompletionPriorityUtil::convertToPrioritized)
+                   .forEach(result::passResult);
+                 stageTimings.put("passResult", HaxeCompletionPerformanceTracker.elapsedMillis(stageStart));
 
-               // resolving PSI elements for index items is too slow for us to get correct item sorting (involves file parsing)
-               // we still want the PsiReference for documentation lookups, but we dont strictly need it
-               // for the sorting even tho it would be nice to also get the proximity sorting.
-               updatePsiElementValues(filteredCompletions);
+                 // resolving PSI elements for index items is too slow for us to get correct item sorting (involves file parsing)
+                 // we still want the PsiReference for documentation lookups, but we dont strictly need it
+                 // for the sorting even tho it would be nice to also get the proximity sorting.
+                 stageStart = HaxeCompletionPerformanceTracker.now();
+                 updatePsiElementValues(filteredCompletions);
+                 stageTimings.put("updatePsiElementValues", HaxeCompletionPerformanceTracker.elapsedMillis(stageStart));
 
-               // TODO mlo: suggest lambda / function when expected type is  functionType
+                 // TODO mlo: suggest lambda / function when expected type is  functionType
 
-               //TODO mlo: mechanism for filtering getters and setters ( get_X / set_x)  when properties exists ? (could be that noCompletion solves this)
+                 //TODO mlo: mechanism for filtering getters and setters ( get_X / set_x)  when properties exists ? (could be that noCompletion solves this)
 
-               // Since we've already run all of the providers, don't let them be repeated.
-
-               result.stopHere();
+                 // Since we've already run all of the providers, don't let them be repeated.
+                 result.stopHere();
+               } finally {
+                 HaxeCompletionPerformanceTracker.finishInvocation(invocation, parameters, stageTimings, filteredCompletions.size());
+               }
              }
            });
   }

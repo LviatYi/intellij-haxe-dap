@@ -51,7 +51,12 @@ public class HaxeMacroCompletionContributor extends CompletionContributor {
              protected void addCompletions(@NotNull CompletionParameters parameters,
                                            ProcessingContext context,
                                            @NotNull CompletionResultSet result) {
-               reificationAndMacroIds(result, parameters.getOriginalPosition(), parameters.getOriginalFile());
+               long start = HaxeCompletionPerformanceTracker.now();
+               try {
+                 reificationAndMacroIds(result, parameters.getOriginalPosition(), parameters.getOriginalFile());
+               } finally {
+                 HaxeCompletionPerformanceTracker.recordContributor("HaxeMacroCompletionContributor", parameters, start);
+               }
              }
            });
   }
