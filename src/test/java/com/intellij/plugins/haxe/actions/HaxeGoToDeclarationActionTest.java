@@ -19,6 +19,8 @@ package com.intellij.plugins.haxe.actions;
 
 import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.plugins.haxe.HaxeCodeInsightFixtureTestCase;
+import com.intellij.plugins.haxe.lang.psi.HaxeClass;
+import com.intellij.plugins.haxe.lang.psi.HaxeMethod;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiReference;
@@ -56,6 +58,34 @@ public class HaxeGoToDeclarationActionTest extends HaxeCodeInsightFixtureTestCas
     final Collection<PsiElement> elements = util.getTargetCandidates(found);
     assertNotNull(elements);
     assertEquals(expectedSize, elements.size());
+  }
+
+  protected void doTestTargetType(PsiFile[] files, Class<? extends PsiElement> expectedType) {
+    assertNotNull(files);
+    final PsiFile myFile = files[0];
+    assertNotNull(myFile);
+    PsiElement target = TargetElementUtil.findTargetElement(
+      myFixture.getEditor(),
+      TargetElementUtil.ELEMENT_NAME_ACCEPTED |
+      TargetElementUtil.REFERENCED_ELEMENT_ACCEPTED |
+      TargetElementUtil.LOOKUP_ITEM_ACCEPTED
+    );
+    assertNotNull(target);
+    assertTrue("Expected target type " + expectedType.getSimpleName() + " but was " + target, expectedType.isInstance(target));
+  }
+
+  protected void doTestConstructorTarget(PsiFile[] files) {
+    assertNotNull(files);
+    final PsiFile myFile = files[0];
+    assertNotNull(myFile);
+    PsiElement target = TargetElementUtil.findTargetElement(
+      myFixture.getEditor(),
+      TargetElementUtil.ELEMENT_NAME_ACCEPTED |
+      TargetElementUtil.REFERENCED_ELEMENT_ACCEPTED |
+      TargetElementUtil.LOOKUP_ITEM_ACCEPTED
+    );
+    assertNotNull(target);
+    assertTrue("Expected constructor target but was " + target, target instanceof HaxeMethod method && method.isConstructor());
   }
 
   @Test
@@ -262,6 +292,21 @@ public class HaxeGoToDeclarationActionTest extends HaxeCodeInsightFixtureTestCas
   @Test
   public void testNewExpression2() {
     doTest(myFixture.configureByFiles("NewExpression2.hx", "com/bar/Foo.hx"), 1);
+  }
+
+  @Test
+  public void testNewExpressionTarget() {
+    doTestConstructorTarget(myFixture.configureByFiles("NewExpressionTarget.hx"));
+  }
+
+  @Test
+  public void testNewExpressionArgumentType() {
+    doTestTargetType(myFixture.configureByFiles("NewExpressionArgumentType.hx"), HaxeClass.class);
+  }
+
+  @Test
+  public void testNewExpressionTypeParameter() {
+    doTestTargetType(myFixture.configureByFiles("NewExpressionTypeParameter.hx"), HaxeClass.class);
   }
 
   @Test
