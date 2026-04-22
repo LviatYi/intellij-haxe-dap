@@ -1458,7 +1458,11 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           catch (final Throwable t) {
             SwingUtilities.invokeLater(new Runnable() {
               public void run() {
-                DapDebugProcess.this.error("Debugging loop failed: " + t);
+                if (t.getMessage().contains("Connection reset")) {
+                  DapDebugProcess.this.warn("Debug stopped: " + t);
+                }else{
+                  DapDebugProcess.this.error("Debugging loop failed: " + t);
+                }
               }
             });
           }
@@ -1691,76 +1695,77 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
       }
       while (debugSocket != null) {
         var message = DapHaxeProtocol.readMessage(debugSocket.getInputStream());
-        if (message != null) {
-          var dpt = DebugProtocolTypes.fromString(message.method);
-          switch (dpt) {
-            case BreakpointStop -> {
-              this.info("Breakpoint stop.");
-              this.checkRunToAndTraceStack(true);
+        if (message == null) {
+          throw new IOException("Debugger protocol error: stream closed before receiving a complete message.");
+        }
+        var dpt = DebugProtocolTypes.fromString(message.method);
+        switch (dpt) {
+          case BreakpointStop -> {
+            this.info("Breakpoint stop.");
+            this.checkRunToAndTraceStack(true);
+          }
+          case ExceptionStop -> {
+            String msg = "";
+            try {
+              var exception = (DapHaxeMessage<ExceptionInfo, Object>)message;
+              if (exception.params != null) {
+                msg = exception.params.text;
+              }
             }
-            case ExceptionStop -> {
-              String msg = "";
-              try {
-                var exception = (DapHaxeMessage<ExceptionInfo, Object>)message;
-                if (exception.params != null) {
-                  msg = exception.params.text;
-                }
-              }
-              catch (Exception ignored) {
-              }
+            catch (Exception ignored) {
+            }
 
-              // Error Dialog
-              String finalMsg = msg;
-              ApplicationManager.getApplication().invokeLater(() -> {
-                Messages.showErrorDialog(project, finalMsg, "Haxe Exception");
-              });
-              showDebugMessage(project,
-                               StringUtil.isEmpty(finalMsg) ? "Exception stop." : finalMsg,
-                               DebugMessageSeverity.EXCEPTION);
-              reportSessionError(StringUtil.isEmpty(finalMsg) ? "Exception stop." : finalMsg);
-              
-              if (StringUtil.isEmpty(msg)) {
-                this.info("Exception stop." + msg);
-              }
-              else {
-                this.info("Exception stop. Error message:" + message);
-              }
+            // Error Dialog
+            String finalMsg = msg;
+            ApplicationManager.getApplication().invokeLater(() -> {
+              Messages.showErrorDialog(project, finalMsg, "Haxe Exception");
+            });
+            showDebugMessage(project,
+                             StringUtil.isEmpty(finalMsg) ? "Exception stop." : finalMsg,
+                             DebugMessageSeverity.EXCEPTION);
+            reportSessionError(StringUtil.isEmpty(finalMsg) ? "Exception stop." : finalMsg);
+            
+            if (StringUtil.isEmpty(msg)) {
+              this.info("Exception stop." + msg);
+            }
+            else {
+              this.info("Exception stop. Error message:" + message);
+            }
 
-              this.checkRunToAndTraceStack(true);
-            }
-            case PauseStop -> {
-              if (waitForPaused) {
-                this.info("Pause stop for first time. Debug Server is wait for resume.");
-                waitForPaused = false;
-                while (!deferredQueue.isEmpty()) {
-                  var cmd = deferredQueue.removeFirst();
-                  this.enqueueCommand(cmd.getFirst(), cmd.getSecond());
-                }
-                this.resume(null);
+            this.checkRunToAndTraceStack(true);
+          }
+          case PauseStop -> {
+            if (waitForPaused) {
+              this.info("Pause stop for first time. Debug Server is wait for resume.");
+              waitForPaused = false;
+              while (!deferredQueue.isEmpty()) {
+                var cmd = deferredQueue.removeFirst();
+                this.enqueueCommand(cmd.getFirst(), cmd.getSecond());
               }
-              else {
-                this.info("Pause stop for Breakpoint step.");
-                this.checkRunToAndTraceStack(false);
-              }
+              this.resume(null);
             }
-            case ThreadExit, ThreadStart -> {
-              //@SuppressWarnings("unchecked")
-              //var m = (DapHaxeMessage<ThreadInfo, Object>)message;
-              //if (m.params != null) {
-              //  var params = m.params;
-              //
-              //  var title = dpt == DebugProtocolTypes.ThreadExit ? "Thread exited. " : "Thread start. ";
-              //  this.info(title + "Thread: " + String.valueOf(params.threadId));
-              //}
-            }
-            default -> {
-              this.info("message: " + message);
+            else {
+              this.info("Pause stop for Breakpoint step.");
+              this.checkRunToAndTraceStack(false);
             }
           }
-          var callback = callbacks.remove(message.id);
-          if (callback != null) {
-            callback.onResponse(message);
+          case ThreadExit, ThreadStart -> {
+            //@SuppressWarnings("unchecked")
+            //var m = (DapHaxeMessage<ThreadInfo, Object>)message;
+            //if (m.params != null) {
+            //  var params = m.params;
+            //
+            //  var title = dpt == DebugProtocolTypes.ThreadExit ? "Thread exited. " : "Thread start. ";
+            //  this.info(title + "Thread: " + String.valueOf(params.threadId));
+            //}
           }
+          default -> {
+            this.info("message: " + message);
+          }
+        }
+        var callback = callbacks.remove(message.id);
+        if (callback != null) {
+          callback.onResponse(message);
         }
       }
     }
