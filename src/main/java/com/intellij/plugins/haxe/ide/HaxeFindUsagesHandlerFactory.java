@@ -23,12 +23,18 @@ import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.plugins.haxe.HaxeLanguage;
+import com.intellij.plugins.haxe.lang.psi.HaxeFieldDeclaration;
 import com.intellij.plugins.haxe.lang.psi.HaxeMethod;
+import com.intellij.plugins.haxe.model.HaxeClassModel;
+import com.intellij.plugins.haxe.model.HaxeFieldModel;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFileSystemItem;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiReference;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class HaxeFindUsagesHandlerFactory extends FindUsagesHandlerFactory {
 
@@ -83,6 +89,30 @@ public class HaxeFindUsagesHandlerFactory extends FindUsagesHandlerFactory {
             else /* ANCESTOR_CLASSES */     { return new HaxeFindUsagesHandler(target, supers); }
           }
         }
+        if (target instanceof HaxeFieldDeclaration haxeField
+            && haxeField.getPropertyDeclaration() != null) {
+          HaxeFieldModel fieldModel = (HaxeFieldModel)haxeField.getModel();
+          HaxeClassModel classModel = fieldModel.getDeclaringClass();
+          if (classModel != null) {
+            String fieldName = fieldModel.getName();
+            List<HaxeFieldModel> ancestorFields = classModel.getAncestorFields(null).stream()
+              .filter(f -> fieldName.equals(f.getName()))
+              .collect(Collectors.toList());
+            if (!ancestorFields.isEmpty()) {
+              String chosen = askWhetherToSearchForOverridingProperties(target);
+              if (CURRENT_CLASS.equals(chosen)) {
+                return new HaxeFindUsagesHandler(target);
+              } else if (BASE_CLASS.equals(chosen)) {
+                return new HaxeFindUsagesHandler(ancestorFields.get(ancestorFields.size() - 1).getBasePsi());
+              } else /* ANCESTOR_CLASSES */ {
+                PsiElement[] superFields = ancestorFields.stream()
+                  .map(HaxeFieldModel::getBasePsi)
+                  .toArray(PsiElement[]::new);
+                return new HaxeFindUsagesHandler(target, superFields);
+              }
+            }
+          }
+        }
       }
       return new HaxeFindUsagesHandler(target != null ? target : element);
     }
@@ -106,6 +136,20 @@ public class HaxeFindUsagesHandlerFactory extends FindUsagesHandlerFactory {
                                           OVERRIDING_OPTIONS,
                                           0,
                                           Messages.getQuestionIcon());  // XXX - Add "Don't ask again?  Have to store that and allow a reset if we do.
+    if (-1 == answer) {
+      throw new ProcessCanceledException(new Throwable("FindUsages canceled by user."));
+    }
+    return OVERRIDING_OPTIONS[answer];
+  }
+
+  private String askWhetherToSearchForOverridingProperties(@NotNull PsiElement psiElement) {
+    // TODO: Externalize the strings.
+    int answer = Messages.showDialog(psiElement.getProject(),
+                                          "Property is declared in a base class or interface.  Would you like to find usages of the base class(es)?",
+                                          "Find Property Usages",
+                                          OVERRIDING_OPTIONS,
+                                          0,
+                                          Messages.getQuestionIcon());
     if (-1 == answer) {
       throw new ProcessCanceledException(new Throwable("FindUsages canceled by user."));
     }

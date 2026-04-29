@@ -94,6 +94,8 @@ public class HaxeFindUsagesTest extends HaxeCodeInsightFixtureTestCase {
 
   @Test
   public void testInterfacePropertyFieldUsage() throws Throwable {
+    // Property declared in interface; search from implementing class field with "include all ancestors"
+    TestDialogManager.setTestDialog(GET_ANCESTOR_CLASSES);
     myFixture.configureByFiles("InterfacePropertyFieldUsage.hx");
     doTest(1);
   }

@@ -180,26 +180,14 @@ public abstract class HaxeFindUsagesHandlerNS extends FindUsagesHandler {
   @Nullable
   private static PsiElement[] tryGetPropertyAccessMethods(HaxeFieldDeclaration field) {
     final HaxeFieldModel model = (HaxeFieldModel)field.getModel();
-    final List<PsiElement> elements = new SmartList<>();
+    final List<PsiElement> methods = new SmartList<>();
     final HaxeMethodModel setterMethod = model.getSetterMethod();
     final HaxeMethodModel getterMethod = model.getGetterMethod();
 
-    if (setterMethod != null) elements.add(setterMethod.getBasePsi());
-    if (getterMethod != null) elements.add(getterMethod.getBasePsi());
+    if (setterMethod != null) methods.add(setterMethod.getBasePsi());
+    if (getterMethod != null) methods.add(getterMethod.getBasePsi());
 
-    final HaxeClassModel classModel = model.getDeclaringClass();
-    if (classModel != null) {
-      final String propertyName = model.getName();
-      for (HaxeFieldModel ancestorField : classModel.getAncestorFields(null)) {
-        if (!propertyName.equals(ancestorField.getName())) continue;
-        PsiElement psi = ancestorField.getBasePsi();
-        if (!elements.contains(psi)) {
-          elements.add(psi);
-        }
-      }
-    }
-
-    return elements.isEmpty() ? null : elements.toArray(PsiElement.EMPTY_ARRAY);
+    return methods.isEmpty() ? null : methods.toArray(PsiElement.EMPTY_ARRAY);
   }
 
   @NotNull
