@@ -6,6 +6,7 @@
   instead of the parameter definition of that type.
 * Changed: Allow Import Optimizer running in lib files when they are writable.
 * Changed: Ignore connect reset error when debugging in dap.
+* Changed: Support jumping from inherited getters to usages within types.
 
 ## 2.1.2(1.7.11)
 

@@ -87,6 +87,18 @@ public class HaxeFindUsagesTest extends HaxeCodeInsightFixtureTestCase {
   }
 
   @Test
+  public void testInterfacePropertyGetterUsage() throws Throwable {
+    myFixture.configureByFiles("InterfacePropertyGetterUsage.hx");
+    doTest(1);
+  }
+
+  @Test
+  public void testInterfacePropertyFieldUsage() throws Throwable {
+    myFixture.configureByFiles("InterfacePropertyFieldUsage.hx");
+    doTest(1);
+  }
+
+  @Test
   public void testVarDeclaration() throws Throwable {
     myFixture.configureByFiles("VarDeclaration.hx", "com/bar/Foo.hx");
     doTest(0);

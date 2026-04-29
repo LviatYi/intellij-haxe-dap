@@ -143,18 +143,38 @@ public abstract class HaxeFindUsagesHandlerNS extends FindUsagesHandler {
   @Nullable
   private static PsiElement[] tryGetProperty(HaxeMethodDeclaration method) {
     final HaxeMethodModel methodModel = method.getModel();
-    final HaxeCommonMembersModel parentModel = methodModel.getDeclaringClass();
-    if (parentModel == null) methodModel.getDeclaringModule();
+    final HaxeClassModel classModel = methodModel.getDeclaringClass();
     final String methodName = method.getName();
 
-    HaxeMemberModel classField = null;
+    if (classModel == null) return null;
 
-    if (StringUtils.startsWith(methodName, GETTER_PREFIX)) {
-      classField = parentModel.getField(methodName.substring(GETTER_PREFIX.length()), null);
-    } else if (StringUtils.startsWith(methodName, SETTER_PREFIX)) {
-      classField = parentModel.getField(methodName.substring(SETTER_PREFIX.length()), null);
+    final String propertyName;
+    if (methodName.startsWith(GETTER_PREFIX)) {
+      propertyName = methodName.substring(GETTER_PREFIX.length());
     }
-    return classField == null ? null : new PsiElement[]{classField.getBasePsi()};
+    else if (methodName.startsWith(SETTER_PREFIX)) {
+      propertyName = methodName.substring(SETTER_PREFIX.length());
+    }
+    else {
+      return null;
+    }
+
+    List<PsiElement> fieldsToSearch = new SmartList<>();
+
+    HaxeMemberModel classField = classModel.getField(propertyName, null);
+    if (classField != null) {
+      fieldsToSearch.add(classField.getBasePsi());
+    }
+
+    for (HaxeFieldModel ancestorField : classModel.getAncestorFields(null)) {
+      if (!propertyName.equals(ancestorField.getName())) continue;
+      PsiElement psi = ancestorField.getBasePsi();
+      if (!fieldsToSearch.contains(psi)) {
+        fieldsToSearch.add(psi);
+      }
+    }
+
+    return fieldsToSearch.isEmpty() ? null : fieldsToSearch.toArray(PsiElement.EMPTY_ARRAY);
   }
 
   @Nullable
