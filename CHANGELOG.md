@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.2.0(1.8.0)
+
+* Changed: Merge IntelliJ-Haxe 1.7.10 into this repo. We support IntelliJ 2025.3 now.
+
+## 2.1.3(1.7.11)
+
 * Fixed: When attempting to jump to a type passed as a parameter in the constructor list, it would jump to the constructor definition
   instead of the parameter definition of that type.
 * Changed: Allow Import Optimizer running in lib files when they are writable.
@@ -90,6 +96,10 @@
 ## 2.0.0-alpha
 
 * Changed: add support for HXCPP driven by Debug Adapter Protocol (DAP) for debugging.
+
+## 1.8.0
+* Support for intellij 2026.1 (Release Candidate) 
+* Updated dependencies & build-system to support 2026.1
 
 ## 1.7.11
 * Bugfix: Extern classes with a constructor that extends other classes should no longer warn about missing super call.
