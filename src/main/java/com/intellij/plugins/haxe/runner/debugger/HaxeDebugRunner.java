@@ -2308,10 +2308,6 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
     }
 
     ApplicationManager.getApplication().invokeLater(() -> {
-      RunContentDescriptor descriptor = debugSession.getRunContentDescriptorIfInitialized();
-      if (descriptor != null) {
-        RunContentManager.getInstance(debugSession.getProject()).selectRunContent(descriptor);
-      }
       XDebugSessionTab.showFramesView(debugSession);
     });
   }

@@ -4,7 +4,7 @@
 
 ## 2.2.0(1.8.0)
 
-* Changed: Merge IntelliJ-Haxe 1.7.10 into this repo. We support IntelliJ 2025.3 now.
+* Changed: Merge IntelliJ-Haxe 1.8.0 into this repo. We support IntelliJ 2026.1 now.
 
 ## 2.1.3(1.7.11)
 
