@@ -17,6 +17,7 @@ public class DapHaxeProtocol extends haxe.lang.HxObject {
   }
 
   private final static int BUFFER_SIZE = 4096;
+  private final static int MAX_RETAINED_BUFFER_SIZE = 1024 * 1024;
   private final static int INVALID_MESSAGE_LENGTH = -1;
   private final static int LENGTH_BYTES = 4;
 
@@ -34,8 +35,19 @@ public class DapHaxeProtocol extends haxe.lang.HxObject {
   }
 
   public static void clearBuffer() {
-    buffer.clear();
+    if (buffer.capacity() != BUFFER_SIZE) {
+      buffer = ByteBuffer.allocate(BUFFER_SIZE).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+    }
+    else {
+      buffer.clear();
+    }
     nextMessageLength = INVALID_MESSAGE_LENGTH;
+  }
+
+  private static void shrinkBufferIfIdle() {
+    if (buffer.position() == 0 && buffer.capacity() > MAX_RETAINED_BUFFER_SIZE) {
+      buffer = ByteBuffer.allocate(BUFFER_SIZE).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+    }
   }
 
   private static void ensureCapacity(int additionalDataLength) {
@@ -68,6 +80,7 @@ public class DapHaxeProtocol extends haxe.lang.HxObject {
     byte[] messageData = new byte[nextMessageLength];
     buffer.get(messageData, 0, nextMessageLength);
     buffer.compact();
+    shrinkBufferIfIdle();
 
     nextMessageLength = INVALID_MESSAGE_LENGTH;
     try {
@@ -105,7 +118,7 @@ public class DapHaxeProtocol extends haxe.lang.HxObject {
     var body = command.toBytes();
     ByteBuffer header = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN);
     header.putInt(body.length);
-    System.out.println("Writing command: \n" + new String(header.array()) + new String(body));
+    System.out.println("Writing command: \n" + command.id + "," + command.method + ",");
 
     try {
       output.write(header.array());

@@ -47,12 +47,17 @@ public class DapHaxeMessage<PT, RT> {
 
   public static DapHaxeMessage fromBytes(byte[] bytes) {
     final int SIZE_THRESHOLD = 1024 * 10;
+    final int LOG_PREVIEW_LIMIT = 1024;
+
+    String content = new String(bytes, StandardCharsets.UTF_8);
     if (bytes.length > SIZE_THRESHOLD) {
-      System.out.println("Lviat Warning: DapHaxeMessage.fromBytes: bytes.length > SIZE_THRESHOLD. bytes.length=" + bytes.length);
-      System.out.println("Lviat Warning: DapHaxeMessage.fromBytes: bytes content=" + new String(bytes));
+      String preview = content.length() > LOG_PREVIEW_LIMIT
+                       ? content.substring(0, LOG_PREVIEW_LIMIT) + "...[truncated]"
+                       : content;
+      System.out.println("Lviat Warning: DapHaxeMessage.fromBytes: large message. bytes.length=" + bytes.length + ", preview=" + preview);
     }
 
-    var pm = gsonCache.fromJson(new String(bytes, StandardCharsets.UTF_8), DapHaxePlainMessage.class);
+    var pm = gsonCache.fromJson(content, DapHaxePlainMessage.class);
     var m = new DapHaxeMessage(pm.id, pm.method);
 
     switch (DebugProtocolTypes.fromString(pm.method)) {
@@ -114,8 +119,7 @@ public class DapHaxeMessage<PT, RT> {
   }
 
   public byte[] toBytes() {
-    var gson = new com.google.gson.Gson();
-    return gson.toJson(this).getBytes(StandardCharsets.UTF_8);
+    return gsonCache.toJson(this).getBytes(StandardCharsets.UTF_8);
   }
 
   @Override
