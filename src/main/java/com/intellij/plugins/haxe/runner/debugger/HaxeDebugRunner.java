@@ -1840,7 +1840,7 @@ public class HaxeDebugRunner extends GenericProgramRunner<RunnerSettings> {
           BreakpointInfo bp = new BreakpointInfo(lineBreakpoint.getLine() + 1);
 
           if (lineBreakpoint.getConditionExpression() != null) {
-            bp.condition = lineBreakpoint.getConditionExpression().toString();
+            bp.condition = lineBreakpoint.getConditionExpression().getExpression();
           }
           breakpointsInFile.add(bp);
         }
